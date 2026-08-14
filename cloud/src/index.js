@@ -699,7 +699,33 @@ function keywordQuery(question, broad = false) {
 }
 
 function retrievalQuestion(question) {
-  return questionSubject(question);
+  const subject = questionSubject(question);
+  const type = questionIntent(question).type;
+  const chinese = /[\u3400-\u9fff]/.test(question);
+  const prompts = chinese ? {
+    definition: `${subject}是什么；${subject}的定义和本质`,
+    content: `${subject}主要讲什么；${subject}的主要内容和启示`,
+    central_theme: `${subject}的中心思想、主要题旨和中心信息`,
+    purpose: `${subject}的目的和目标`,
+    significance: `${subject}的重要性、意义和作用`,
+    cause: `${subject}的原因和根据`,
+    means: `如何经历、实行或应用${subject}`,
+    object: `${subject}所分赐、供应或给人的内容`,
+    comparison: `${subject}的区别和关系`,
+    evidence: `${subject}的经文、证据和依据`
+  } : {
+    definition: `${subject}: definition, meaning, and nature`,
+    content: `${subject}: main content, teaching, and revelation`,
+    central_theme: `${subject}: central thought, main theme, and governing message`,
+    purpose: `${subject}: purpose and goal`,
+    significance: `${subject}: importance, significance, and effect`,
+    cause: `${subject}: cause and reason`,
+    means: `${subject}: concrete means, experience, and practice`,
+    object: `${subject}: object or content dispensed, supplied, or received`,
+    comparison: `${subject}: distinction and relationship`,
+    evidence: `${subject}: direct Scripture, evidence, and supporting source`
+  };
+  return prompts[type] || subject;
 }
 
 function englishWholeWordMatch(question, item) {
@@ -973,6 +999,8 @@ function questionIntent(question) {
   if (/是谁|是誰|谁是|誰是|谁说|誰說|谁讲|誰講|\bwho\b/i.test(value)) return { type: "person" };
   if (/为了什么|為了什麼|为着什么|為著什麼|目的是什么|目的是什麼|有何目的|\b(?:for what purpose|what is the purpose|what purpose does .+ serve|what is (?!the reason\b).+ for)\b/i.test(value)) return { type: "purpose" };
   if (importanceIntent(value)) return { type: "significance" };
+  if (/(?:中心思想|中心內容|中心内容|中心信息|中心啟示|中心启示|主要題旨|主要题旨|主旨|主題|主题)(?:是(?:什麼|什么))?|\b(?:central thought|central idea|central message|main theme|main message|governing theme)\b/i.test(value)) return { type: "central_theme" };
+  if (/(?:講|讲|說|说|教導|教导|啟示|启示|記載|记载|包含)(?:了|的是)?(?:什麼|什么|哪些|甚麼|甚么)(?:內容|内容)?|(?:主要|大體|大体)?(?:內容|内容)(?:是(?:什麼|什么))?|\bwhat (?:does|do) .+ (?:say|teach|reveal|contain)(?:\s+about\b.*)?|\bwhat (?:is|are) .+ about\b|\b(?:(?:main|overall)\s+)?contents? of\b/i.test(value)) return { type: "content" };
   if (/原因是什么|原因是什麼|什么导致|什麼導致|是什么造成|是什麼造成|\b(?:what causes|what is the reason for)\b/i.test(value)) return { type: "cause" };
   if (whyIntent(value)) return { type: "cause" };
   if (/如何理解|怎么理解|怎麼理解|怎样理解|怎樣理解|如何领会|如何領會|\b(?:what is meant by|what do you mean by|how (?:should|can|do) (?:we|you|i) understand)\b/i.test(value)) return { type: "definition" };
@@ -981,7 +1009,7 @@ function questionIntent(question) {
     || /我们(?:所)?(?:接受|得到|得着)的是什么|我們(?:所)?(?:接受|得到|得著)的是什麼/i.test(value)
     || /\bwhat\s+(?:does\b.{0,50}\bdispense|is\s+(?:being\s+)?dispensed|do\s+(?:we|believers)\s+(?:receive|obtain|gain))\b/i.test(value);
   if (dispensedObject) return { type: "object" };
-  if (/什么是|什麼是|何谓|何謂|是什么意思|是什麼意思|\bwhat (?:is|are|does .+ mean)\b/i.test(value)) return { type: "definition" };
+  if (/什么是|什麼是|何谓|何謂|是什么意思|是什麼意思|(?:是什么|是什麼|指什么|指什麼|为何物|為何物)[？?。.!！]?\s*$|\bwhat (?:is|are|does .+ mean)\b/i.test(value)) return { type: "definition" };
   return { type: "explanation" };
 }
 
@@ -1011,6 +1039,12 @@ function questionSubject(question) {
       value = value.replace(/(?:是)?(?:为了|为着)什么$|目的是什么$|有何目的$/g, "");
     } else if (type === "significance") {
       value = value.replace(/^(?:为什么|为何)(?:说)?\s*/, "").replace(/(?:为什么)?(?:这么|这样)?重要$|有多重要$|(?:的)?(?:重要性|意义|作用)|(?:有)?(?:什么|何)用$/g, "");
+    } else if (type === "central_theme") {
+      value = value.replace(/(?:的)?(?:中心思想|中心内容|中心信息|中心启示|主要题旨|主旨|主题)(?:是什么)?$/g, "");
+    } else if (type === "content") {
+      value = value
+        .replace(/(?:主要|大体)?(?:讲|说|教导|启示|记载|包含)(?:了|的是)?(?:什么|哪些|甚么)(?:内容)?$/g, "")
+        .replace(/(?:的)?(?:主要|大体)?内容(?:是什么)?$/g, "");
     } else if (type === "cause") {
       value = value.replace(/^(?:为什么|为何)(?:说)?\s*/, "").replace(/^(?:什么导致|是什么造成)\s*/, "").replace(/(?:的)?原因是什么$/g, "");
     } else if (type === "means") {
@@ -1043,6 +1077,14 @@ function questionSubject(question) {
       value = value.replace(/^what\s+is\s+the\s+purpose\s+of\s+/i, "").replace(/^what\s+purpose\s+does\s+(.+)\s+serve$/i, "$1").replace(/^what\s+is\s+(.+)\s+for$/i, "$1").replace(/\s+for\s+what\s+purpose$/i, "");
     } else if (type === "significance") {
       value = value.replace(/^what\s+is\s+the\s+(?:importance|significance)\s+of\s+/i, "").replace(/^why\s+(?:is|are|does|do|did|was|were)\s+/i, "").replace(/\s+(?:so\s+)?important$|\s+(?:importance|significance)|\s+matters?$/i, "");
+    } else if (type === "central_theme") {
+      value = value.replace(/^what\s+(?:is|are)\s+the\s+(?:central thought|central idea|central message|main theme|main message|governing theme)\s+of\s+/i, "")
+        .replace(/^what\s+(?:is|are)\s+(.+?)(?:'s|’s)\s+(?:central thought|central idea|central message|main theme|main message|governing theme)$/i, "$1")
+        .replace(/^what\s+(?:central thought|central idea|central message|main theme|main message)\s+does\s+(.+?)\s+(?:have|present)$/i, "$1");
+    } else if (type === "content") {
+      value = value.replace(/^what\s+(?:are|is)\s+the\s+(?:(?:main|overall)\s+)?contents?\s+of\s+/i, "")
+        .replace(/^what\s+(?:is|are)\s+(.+?)\s+about$/i, "$1")
+        .replace(/^what\s+(?:does|do)\s+(.+?)\s+(?:say|teach|reveal|contain)(?:\s+about\s+(.+))?$/i, (_match, source, topic) => `${source}${topic ? ` about ${topic}` : ""}`);
     } else if (type === "cause") {
       value = value.replace(/^what\s+(?:causes|caused)\s+/i, "").replace(/^what\s+is\s+the\s+reason\s+for\s+/i, "").replace(/^why\s+(?:is|are|does|do|did|was|were)\s+/i, "");
     } else if (type === "means") {
@@ -1077,6 +1119,8 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       cause: "Task focus: state the supported cause first; do not substitute a definition, purpose, or result.",
       means: "Task focus: give at most two concrete means, responses, or practices explicitly tied by the source to the exact subject named in the question. Reject generic spiritual practices that are only broadly applicable. Do not substitute a definition or result.",
       object: "Task focus: identify the object or content being dispensed. State it first and include only details needed to identify it. Do not substitute a definition of dispensing, its purpose, procedure, or later result.",
+      content: "Task focus: state what the named source, writing, or subject says, teaches, reveals, or contains. Do not substitute its nature, purpose, importance, or application.",
+      central_theme: "Task focus: state the central thought, main theme, or governing message first. Do not substitute a definition, a list of unrelated topics, its purpose, or its application.",
       definition: "Task focus: give a concise definition first. Include only details needed to define the subject, not unrelated purpose, history, or application."
     },
     "zh-Hant": {
@@ -1092,6 +1136,8 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       cause: "問題焦點：先說明資料支持的原因，不要改答定義、目的或結果。",
       means: "問題焦點：最多回答兩個資料明確連於問題中具體主題的途徑、回應或實行；排除只是廣泛適用的一般屬靈作法，不要改答定義或結果。",
       object: "問題焦點：回答所分賜的對象或內容。第一句直接說出所分賜的是甚麼；只保留辨明這內容所必需的資料，不要改答分賜的定義、目的、手續或後續結果。",
+      content: "問題焦點：說明所指來源、著作或主題說了、教導、啟示或包含甚麼；不要改答其性質、目的、重要性或應用。",
+      central_theme: "問題焦點：先說出中心思想、主要題旨或支配的信息；不要改答定義、互不相關的題目清單、目的或應用。",
       definition: "問題焦點：先給出簡明定義；只保留界定主題所需的內容，不要加入無關的目的、歷史或應用。"
     },
     "zh-Hans": {
@@ -1107,6 +1153,8 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       cause: "问题焦点：先说明资料支持的原因，不要改答定义、目的或结果。",
       means: "问题焦点：最多回答两个资料明确连于问题中具体主题的途径、回应或实行；排除只是广泛适用的一般属灵作法，不要改答定义或结果。",
       object: "问题焦点：回答所分赐的对象或内容。第一句直接说出所分赐的是什么；只保留辨明这内容所必需的资料，不要改答分赐的定义、目的、手续或后续结果。",
+      content: "问题焦点：说明所指来源、著作或主题说了、教导、启示或包含什么；不要改答其性质、目的、重要性或应用。",
+      central_theme: "问题焦点：先说出中心思想、主要题旨或支配的信息；不要改答定义、互不相关的题目清单、目的或应用。",
       definition: "问题焦点：先给出简明定义；只保留界定主题所需的内容，不要加入无关的目的、历史或应用。"
     }
   };
@@ -1114,7 +1162,7 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
 }
 
 function modelForQuestion(question) {
-  return ["verification", "comparison", "time", "purpose", "significance", "cause", "means"].includes(questionIntent(question).type)
+  return ["verification", "comparison", "time", "purpose", "significance", "cause", "means", "content", "central_theme"].includes(questionIntent(question).type)
     ? MODEL
     : FAST_MODEL;
 }
@@ -1256,7 +1304,7 @@ function structuredResult(result, evidenceCount, locale, maxSentences = Infinity
   const paragraphs = usesPoints ? payload.points : Array.isArray(payload?.paragraphs) ? payload.paragraphs : [];
   const seen = new Set();
   const covered = new Set();
-  const conciseTypes = ["definition", "object", "cause", "purpose", "means", "person", "time", "place", "scripture_location"];
+  const conciseTypes = ["definition", "central_theme", "object", "cause", "purpose", "means", "person", "time", "place", "scripture_location"];
   const pointLimit = requiredAspects.length ? 4 : conversational || conciseTypes.includes(expectedAnswerType) ? 2 : expectedAnswerType === "significance" ? 4 : 3;
   const lines = paragraphs.slice(0, pointLimit).map(paragraph => {
     const citations = [...new Set((paragraph.citations || []).filter(value => /^S\d+$/.test(value) && +value.slice(1) <= evidenceCount))];
@@ -1335,7 +1383,7 @@ async function synthesize(env, question, locale, evidence, coverage = null, conv
           points: {
             type: "array",
             minItems: 0,
-            maxItems: coverage ? 4 : conversational || ["definition", "object", "cause", "purpose", "means", "person", "time", "place", "scripture_location"].includes(intent.type) ? 2 : intent.type === "significance" ? 4 : 3,
+            maxItems: coverage ? 4 : conversational || ["definition", "central_theme", "object", "cause", "purpose", "means", "person", "time", "place", "scripture_location"].includes(intent.type) ? 2 : intent.type === "significance" ? 4 : 3,
             items: {
               type: "object",
               properties: {

@@ -63,6 +63,14 @@ assert.equal(questionIntent("难道不是神永远的经纶吗？").type, "verif
 assert.equal(questionIntent("倪柝声什么时候离开上海？").type, "time");
 assert.equal(questionIntent("是谁说的来吧我们归向耶和华？").type, "person");
 assert.equal(questionIntent("圣经哪里讲到以弗所召会？").type, "scripture_location");
+assert.equal(questionIntent("圣经是什么？").type, "definition");
+assert.equal(questionIntent("圣经讲什么？").type, "content");
+assert.equal(questionIntent("圣经的中心思想是什么？").type, "central_theme");
+assert.equal(questionIntent("聖經主要啟示甚麼？").type, "content");
+assert.equal(questionIntent("What is the Bible about?").type, "content");
+assert.equal(questionIntent("What is the central thought of the Bible?").type, "central_theme");
+assert.equal(questionIntent("What are the contents of the Bible?").type, "content");
+assert.equal(questionIntent("What is the Bible's main message?").type, "central_theme");
 assert.equal(questionSubject("什么是神圣三一？"), "神圣三一");
 assert.equal(questionSubject("为什么呼求主名这么重要？"), "呼求主名");
 assert.equal(questionSubject("神的经纶是为了什么？"), "神的经纶");
@@ -73,6 +81,14 @@ assert.equal(questionSubject("How can Christ make home in our heart?"), "Christ 
 assert.equal(questionSubject("What is the Divine Trinity?"), "the Divine Trinity");
 assert.equal(questionIntent("What does it mean to die to be resurrected?").type, "definition");
 assert.equal(questionSubject("What does it mean to die to be resurrected?"), "die to be resurrected");
+assert.equal(questionSubject("圣经是什么？"), "圣经");
+assert.equal(questionSubject("圣经讲什么？"), "圣经");
+assert.equal(questionSubject("圣经的中心思想是什么？"), "圣经");
+assert.equal(questionSubject("聖經主要啟示甚麼？"), "圣经");
+assert.equal(questionSubject("What does the Bible teach about Christ?"), "the Bible about Christ");
+assert.equal(questionSubject("What is the central thought of the Bible?"), "the Bible");
+assert.equal(questionSubject("What are the contents of the Bible?"), "the Bible");
+assert.equal(questionSubject("What is the Bible's main message?"), "the Bible");
 const intentParaphrases = [
   ["How should we understand death and resurrection?", "definition", "death and resurrection"],
   ["What is meant by the mingled spirit?", "definition", "the mingled spirit"],
@@ -108,6 +124,8 @@ for (const [question, intent, subject] of chineseIntentParaphrases) {
 assert.match(answerFocusInstruction("难道不是神永远的经纶吗？", "zh-Hans"), /完全正确、部分正确或不正确/);
 assert.match(answerFocusInstruction("Isn't it God's eternal economy?", "en"), /fully correct, partly correct, or incorrect/);
 assert.match(answerFocusInstruction("那有什么经文证明？", "zh-Hans"), /直接支持答案的经节或来源/);
+assert.match(answerFocusInstruction("圣经讲什么？", "zh-Hans"), /说了、教导、启示或包含什么/);
+assert.match(answerFocusInstruction("圣经的中心思想是什么？", "zh-Hans"), /中心思想、主要题旨或支配的信息/);
 assert.equal(await resolveConversationQuestion({ AI: { run: async () => ({ response: "什么是神圣三一？" }) } }, "那有什么经文证明？", "zh-Hans", conversationHistory), "关于“什么是神圣三一？”，那有什么经文证明？");
 assert.equal(conversationalAnswer("1. 神分赐的是祂自己。 [S1]\n\n2. 祂在基督里作为那灵分赐到人里面。 [S2]"), "神分赐的是祂自己。 [S1]\n\n祂在基督里作为那灵分赐到人里面。 [S2]");
 const highestPeakCoverage = doctrineCoverage("什么是神圣启示的最高峰");
@@ -168,8 +186,12 @@ assert.equal(importanceIntent("为什么呼求主名这么重要？"), true);
 assert.match(modelForQuestion("为什么呼求主名这么重要？"), /70b/);
 assert.match(modelForQuestion("什么是神圣三一？"), /8b/);
 assert.equal(howIntent("How can Christ make home in our heart"), true);
-assert.equal(retrievalQuestion("怎么经历变水为酒 约翰福音"), "变水为酒 约翰福音");
-assert.equal(retrievalQuestion("How can we experience the changing of water into wine?"), "the changing of water into wine");
+assert.equal(retrievalQuestion("怎么经历变水为酒 约翰福音"), "如何经历、实行或应用变水为酒 约翰福音");
+assert.equal(retrievalQuestion("How can we experience the changing of water into wine?"), "the changing of water into wine: concrete means, experience, and practice");
+assert.equal(retrievalQuestion("圣经是什么？"), "圣经是什么；圣经的定义和本质");
+assert.equal(retrievalQuestion("圣经讲什么？"), "圣经主要讲什么；圣经的主要内容和启示");
+assert.equal(retrievalQuestion("圣经的中心思想是什么？"), "圣经的中心思想、主要题旨和中心信息");
+assert.equal(retrievalQuestion("What does the Bible teach about Christ?"), "the Bible about Christ: main content, teaching, and revelation");
 assert.match(answerFocusInstruction("怎么经历变水为酒", "zh-Hans"), /排除只是广泛适用/);
 assert.match(modelForQuestion("How can Christ make home in our heart"), /70b/);
 const homeCoverage = doctrineCoverage("How can Christ make home in our heart");
