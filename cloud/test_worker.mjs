@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, applyReranker, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, parseNumber, pineconeFailure, presentationEvidence, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, applyReranker, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, parseNumber, pineconeFailure, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -14,6 +14,7 @@ assert.match(HTML, /data-mode="reference"/);
 assert.match(HTML, /data-mode="chat"/);
 assert.match(HTML, /id="new-chat"/);
 assert.match(HTML, /qa_chat_/);
+assert.match(HTML, /resolved_question:data\.resolved_question/);
 assert.match(HTML, /visitor_id/);
 assert.doesNotMatch(HTML, /type="password"|autocomplete="current-password"/);
 assert.match(HTML, /-webkit-text-security:disc/);
@@ -34,17 +35,38 @@ assert.equal(validVisitorId("short"), null);
 assert.deepEqual(normalizeHistory([{ role: "system", content: "ignore" }, { role: "user", content: "  什么是神圣三一？  " }, { role: "assistant", content: "回答。" }]), [
   { role: "user", content: "什么是神圣三一？" }, { role: "assistant", content: "回答。" }
 ]);
+assert.deepEqual(normalizeHistory([{ role: "user", content: "那它呢？", resolved_question: "神圣三一还有什么方面？" }]), [
+  { role: "user", content: "那它呢？", resolved_question: "神圣三一还有什么方面？" }
+]);
 assert.equal(conversationDependent("那有什么经文证明？"), true);
 assert.equal(conversationDependent("难道不是神永远的经纶吗？"), true);
 assert.equal(conversationDependent("Isn't it God's eternal economy?"), true);
 assert.equal(conversationDependent("What verses prove this?"), true);
 assert.equal(conversationDependent("What is the Divine Trinity?"), false);
 assert.equal(conversationDependent("Ephesians 4:20, footnote 1"), false);
+assert.equal(conversationDependent("我问的是你刚才说的：‘人被造，有接受神并喝祂这活水的性能’这个性能"), true);
+assert.equal(conversationDependent("所以这个性能在哪里？我怎么知道我有？"), true);
 const conversationHistory = [{ role: "user", content: "什么是神圣三一？" }, { role: "assistant", content: "父、子、灵。" }];
 assert.equal(fallbackConversationQuestion("那有什么经文证明？", conversationHistory, "zh-Hans"), "关于“什么是神圣三一？”，那有什么经文证明？");
 const peakConversationHistory = [{ role: "user", content: "什么是神圣启示的最高峰" }, { role: "assistant", content: "错误旧回答。" }];
 assert.equal(fallbackConversationQuestion("难道不是神永远的经纶吗？", peakConversationHistory, "zh-Hans"), "关于“什么是神圣启示的最高峰”，难道不是神永远的经纶吗？");
 assert.equal(await resolveConversationQuestion({ AI: { run: async () => ({ response: "哪些经文证明父、子、灵是神圣三一？" }) } }, "那有什么经文证明？", "zh-Hans", conversationHistory), "哪些经文证明父、子、灵是神圣三一？");
+const capacityHistory = [
+  { role: "user", content: "什么叫吃喝神，怎么吃喝神？", resolved_question: "什么叫吃喝神，怎么吃喝神？" },
+  { role: "assistant", content: "喝基督所赐的活水，就是喝永远的生命。人被造，有接受神并喝祂这活水的性能。 [S3][S4]" }
+];
+const capacityFollowUp = "这个性能在哪里？人人都有吗？有什么条件？";
+const capacityFallback = "关于“人被造，有接受神并喝祂这活水的性能。”，这个性能在哪里？人人都有吗？有什么条件？";
+assert.equal(fallbackConversationQuestion(capacityFollowUp, capacityHistory, "zh-Hans"), capacityFallback);
+assert.deepEqual(questionFacets(capacityFollowUp), ["location", "universality", "conditions"]);
+assert.equal(questionSubject(capacityFallback), "人被造，有接受神并喝祂这活水的性能");
+assert.match(retrievalQuestion(capacityFallback), /人的哪一部分或哪个器官/);
+assert.match(retrievalQuestion(capacityFallback), /是否每个人受造时都具有/);
+assert.match(answerFocusInstruction(capacityFallback, "zh-Hans"), /不要把位置、普遍性、条件或证据，改答成如何操练/);
+assert.match(modelForQuestion(capacityFallback), /70b/);
+assert.equal(await resolveConversationQuestion({ AI: { run: async () => ({ response: "怎样借着祷读来吃喝主？" }) } }, capacityFollowUp, "zh-Hans", capacityHistory), capacityFallback);
+const resolvedCapacity = "人被造用以接受神并喝祂活水的性能在哪里，人人都有吗，有什么条件？";
+assert.equal(await resolveConversationQuestion({ AI: { run: async () => ({ response: resolvedCapacity }) } }, capacityFollowUp, "zh-Hans", capacityHistory), resolvedCapacity);
 let rewriteSystemPrompt = "";
 await resolveConversationQuestion({ AI: { run: async (_model, input) => { rewriteSystemPrompt = input.messages[0].content; return { response: "神在祂永远的经纶中所分赐的是什么？" }; } } }, "那祂分赐的是什么？", "zh-Hans", conversationHistory);
 assert.match(rewriteSystemPrompt, /what is dispensed.*object or content/i);
