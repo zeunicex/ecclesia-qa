@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ecclesia-qa",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-11",
+  "workers_dev": true,
+  "preview_urls": false,
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "CORPUS_VERSION": "phase4-d-2026-08-13",
+    "PINECONE_HOST": "ecclesia-phase1-zwrd0cz.svc.aped-4627-b74a.pinecone.io",
+    "PINECONE_NAMESPACE": "phase1",
+    "PINECONE_BIBLE_NAMESPACE": "phase2-bible",
+    "PINECONE_FOOTNOTE_NAMESPACE": "phase2-footnotes"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ecclesia-phase1",
+      "database_id": "e3566bab-a3ee-4df2-aaf7-dc5f5db8c6f2"
+    },
+    {
+      "binding": "ANALYTICS_DB",
+      "database_name": "ecclesia-analytics",
+      "database_id": "c8561e77-50c1-4823-a403-e271efc6feed"
+    }
+  ]
+}
