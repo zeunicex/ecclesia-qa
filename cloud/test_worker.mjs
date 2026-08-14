@@ -185,6 +185,8 @@ assert.equal(whyIntent("为什么呼求主名这么重要？"), true);
 assert.equal(importanceIntent("为什么呼求主名这么重要？"), true);
 assert.match(modelForQuestion("为什么呼求主名这么重要？"), /70b/);
 assert.match(modelForQuestion("什么是神圣三一？"), /8b/);
+assert.match(modelForQuestion("圣经讲什么？"), /8b/);
+assert.match(modelForQuestion("圣经的中心思想是什么？"), /8b/);
 assert.equal(howIntent("How can Christ make home in our heart"), true);
 assert.equal(retrievalQuestion("怎么经历变水为酒 约翰福音"), "如何经历、实行或应用变水为酒 约翰福音");
 assert.equal(retrievalQuestion("How can we experience the changing of water into wine?"), "the changing of water into wine: concrete means, experience, and practice");

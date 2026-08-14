@@ -1162,7 +1162,7 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
 }
 
 function modelForQuestion(question) {
-  return ["verification", "comparison", "time", "purpose", "significance", "cause", "means", "content", "central_theme"].includes(questionIntent(question).type)
+  return ["verification", "comparison", "time", "purpose", "significance", "cause", "means"].includes(questionIntent(question).type)
     ? MODEL
     : FAST_MODEL;
 }
