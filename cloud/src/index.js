@@ -1227,7 +1227,7 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       means: "Task focus: give at most two concrete means, responses, or practices explicitly tied by the source to the exact subject named in the question. Reject generic spiritual practices that are only broadly applicable. Do not substitute a definition or result.",
       object: "Task focus: identify the object or content being dispensed. State it first and include only details needed to identify it. Do not substitute a definition of dispensing, its purpose, procedure, or later result.",
       content: "Task focus: state what the named source, writing, or subject says, teaches, reveals, or contains. Do not substitute its nature, purpose, importance, or application.",
-      central_theme: "Task focus: state the central thought, main theme, or governing message first. Do not substitute a definition, a list of unrelated topics, its purpose, or its application.",
+      central_theme: "Task focus: state the central thought, main theme, or governing message first. Treat a source as direct support only when it explicitly connects the named subject to that central thought or theme. A heading, a recurring motif, a beginning-and-ending pattern, or a statement of importance is supplementary context and cannot by itself establish the central theme. Do not substitute a definition, a list of unrelated topics, its purpose, or its application.",
       definition: "Task focus: give a concise definition first. Include only details needed to define the subject, not unrelated purpose, history, or application."
     },
     "zh-Hant": {
@@ -1244,7 +1244,7 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       means: "問題焦點：最多回答兩個資料明確連於問題中具體主題的途徑、回應或實行；排除只是廣泛適用的一般屬靈作法，不要改答定義或結果。",
       object: "問題焦點：回答所分賜的對象或內容。第一句直接說出所分賜的是甚麼；只保留辨明這內容所必需的資料，不要改答分賜的定義、目的、手續或後續結果。",
       content: "問題焦點：說明所指來源、著作或主題說了、教導、啟示或包含甚麼；不要改答其性質、目的、重要性或應用。",
-      central_theme: "問題焦點：先說出中心思想、主要題旨或支配的信息；不要改答定義、互不相關的題目清單、目的或應用。",
+      central_theme: "問題焦點：先說出中心思想、主要題旨或支配的信息；只有資料明確把所問主題與該中心思想或題旨相連，才可作直接根據。標題、反覆出現的線索、首尾呼應或重要性說明只可作補充，不能單獨證成中心思想；不要改答定義、互不相關的題目清單、目的或應用。",
       definition: "問題焦點：先給出簡明定義；只保留界定主題所需的內容，不要加入無關的目的、歷史或應用。"
     },
     "zh-Hans": {
@@ -1261,7 +1261,7 @@ function answerFocusInstruction(question, locale, intent = questionIntent(questi
       means: "问题焦点：最多回答两个资料明确连于问题中具体主题的途径、回应或实行；排除只是广泛适用的一般属灵作法，不要改答定义或结果。",
       object: "问题焦点：回答所分赐的对象或内容。第一句直接说出所分赐的是什么；只保留辨明这内容所必需的资料，不要改答分赐的定义、目的、手续或后续结果。",
       content: "问题焦点：说明所指来源、著作或主题说了、教导、启示或包含什么；不要改答其性质、目的、重要性或应用。",
-      central_theme: "问题焦点：先说出中心思想、主要题旨或支配的信息；不要改答定义、互不相关的题目清单、目的或应用。",
+      central_theme: "问题焦点：先说出中心思想、主要题旨或支配的信息；只有资料明确把所问主题与该中心思想或题旨相连，才可作直接根据。标题、反复出现的线索、首尾呼应或重要性说明只可作补充，不能单独证成中心思想；不要改答定义、互不相关的题目清单、目的或应用。",
       definition: "问题焦点：先给出简明定义；只保留界定主题所需的内容，不要加入无关的目的、历史或应用。"
     }
   };
@@ -1272,6 +1272,21 @@ function modelForQuestion(question) {
   return questionFacets(question).length > 1 || ["verification", "comparison", "time", "purpose", "significance", "cause", "means"].includes(questionIntent(question).type)
     ? MODEL
     : FAST_MODEL;
+}
+
+function centralThemeEvidence(evidence, question) {
+  if (questionIntent(question).type !== "central_theme") return evidence;
+  const subject = toSimplified(questionSubject(question)).toLowerCase()
+    .replace(/^(?:the|a|an)\s+/i, "").replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "");
+  if (!subject) return [];
+  const escaped = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const chineseClaim = new RegExp(`${escaped}.{0,240}(?:中心思想|主要(?:的)?思想|基本观念|中心信息|中心启示|主要题旨|主旨|主题)[，,:：\\s]{0,8}(?:是(?!什么|甚么|何)|乃是|就是|在于)`);
+  const englishClaim = new RegExp(`${escaped}.{0,240}(?:central thought|central idea|central message|main theme|main message|governing theme)[,:\\s]{0,12}(?:is|consists in|concerns)`, "i");
+  return evidence.filter(item => {
+    const text = toSimplified(String(item.text || "")).toLowerCase().replace(/\s+/g, " ");
+    const compact = text.replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "");
+    return compact.includes(subject) && (chineseClaim.test(text.replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "")) || englishClaim.test(text));
+  });
 }
 
 function evidenceExcerpt(value, question, limit = 1000) {
@@ -1454,7 +1469,8 @@ async function synthesize(env, question, locale, evidence, coverage = null, conv
   const importance = importanceIntent(question);
   const quoteAttribution = scriptureQuoteIntent(question);
   const only = /只有|唯一|\bonly\b/i.test(question);
-  const selected = evidence.slice(0, why || importance ? 5 : 6);
+  const eligibleEvidence = centralThemeEvidence(evidence, question);
+  const selected = eligibleEvidence.slice(0, why || importance ? 5 : 6);
   if (!selected.length || !env.AI) return {
     answerable: false,
     reason: selected.length ? "workers_ai_unavailable" : "no_evidence",
@@ -1466,6 +1482,7 @@ async function synthesize(env, question, locale, evidence, coverage = null, conv
     return `[${item.citation_id}] ${location}\n${evidenceExcerpt(item.text, question, 1100)}`;
   }).join("\n\n");
   const citationIds = selected.map(item => item.citation_id);
+  const citationCeiling = Math.max(0, ...citationIds.map(value => Number(String(value).replace(/^S/, "")) || 0));
   const requiredAspects = coverage?.aspects?.map(aspect => aspect.id) || [];
   const coveragePrompt = coverage ? `Required coverage: return exactly one distinct point for each aspect below and set that point's aspect field to the exact ID. Do not omit or merge aspects. These descriptions are retrieval checks only; never copy or paraphrase them as answer wording. Use the cited source's own wording.\n${coverage.aspects.map(aspect => `- ${aspect.id}: ${aspect.description}`).join("\n")}\n\n` : "";
   const focusPrompt = answerFocusInstruction(question, locale, intent);
@@ -1514,15 +1531,15 @@ async function synthesize(env, question, locale, evidence, coverage = null, conv
   let usedModel = requestedModel;
   const minimumPoints = Math.max(importance ? 2 : 1, requiredAspects.length);
   try {
-    result = structuredResult(await run(requestedModel), selected.length, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
+    result = structuredResult(await run(requestedModel), citationCeiling, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
   } catch (error) {
     if (requestedModel !== FAST_MODEL) throw error;
     usedModel = MODEL;
-    result = structuredResult(await run(MODEL), selected.length, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
+    result = structuredResult(await run(MODEL), citationCeiling, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
   }
   if (requestedModel === FAST_MODEL && usedModel === FAST_MODEL && !result.answerable) {
     usedModel = MODEL;
-    result = structuredResult(await run(MODEL), selected.length, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
+    result = structuredResult(await run(MODEL), citationCeiling, locale, why ? 3 : Infinity, minimumPoints, requiredAspects, conversational, intent.type, true, conversational && facets.length > 1 ? 3 : null);
   }
   return { ...result, model: usedModel };
 }
@@ -1669,7 +1686,7 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
   }
 }
 
-export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, evidenceExcerpt, applyReranker, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence };
+export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, evidenceExcerpt, applyReranker, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence };
 
 export default {
   async fetch(request, env, ctx) {

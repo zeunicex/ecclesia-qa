@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, applyReranker, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, parseNumber, pineconeFailure, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, parseNumber, pineconeFailure, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -111,6 +111,13 @@ assert.equal(questionSubject("What does the Bible teach about Christ?"), "the Bi
 assert.equal(questionSubject("What is the central thought of the Bible?"), "the Bible");
 assert.equal(questionSubject("What are the contents of the Bible?"), "the Bible");
 assert.equal(questionSubject("What is the Bible's main message?"), "the Bible");
+const centralThemeSources = [
+  { source_id: "supplementary", text: "中心思想。圣经开始于生命树，也结束于生命树。我们所接受到里面的，就是我们所凭以活着的。" },
+  { source_id: "direct", text: "圣经的中心思想。我们来读这本神的话时，应当知道这本书的基本观念，是神渴望将祂自己作到我们里面。" }
+];
+assert.deepEqual(centralThemeEvidence(centralThemeSources, "圣经的中心思想是什么？").map(item => item.source_id), ["direct"]);
+assert.deepEqual(centralThemeEvidence(centralThemeSources, "圣经讲什么？").map(item => item.source_id), ["supplementary", "direct"]);
+assert.match(answerFocusInstruction("圣经的中心思想是什么？", "zh-Hans"), /首尾呼应.*不能单独证成中心思想/);
 const intentParaphrases = [
   ["How should we understand death and resurrection?", "definition", "death and resurrection"],
   ["What is meant by the mingled spirit?", "definition", "the mingled spirit"],
