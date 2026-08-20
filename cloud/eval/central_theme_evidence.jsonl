@@ -1,0 +1,40 @@
+{"id":"zh-direct-01","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经的中心就是神在祂儿子里面来作人的生命。"}
+{"id":"zh-direct-02","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经的中心和根本，就是说到神在祂儿子里面来作我们的生命。"}
+{"id":"zh-direct-03","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"这本书的基本观念，是神渴望将祂自己作到我们里面。"}
+{"id":"zh-direct-04","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"整本圣经的主要题旨乃是基督作生命并产生召会。"}
+{"id":"zh-direct-05","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经主要启示神在基督里将自己分赐到人里面。"}
+{"id":"zh-direct-06","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经支配的信息是神要得着团体的彰显。"}
+{"id":"zh-direct-07","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经的主旨在于神与人成为一。"}
+{"id":"zh-direct-08","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"圣经所陈明的中心乃是基督与召会。"}
+{"id":"zh-direct-09","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"读整本圣经时要看见，它的基本观念是神作人的内容。"}
+{"id":"zh-direct-10","group":"zh-direct","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":true,"evidence":"从创世记到启示录，圣经的中心启示乃是神要得着祂的彰显。"}
+{"id":"multi-direct-01","group":"multi-direct","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":true,"evidence":"聖經的中心就是神在祂兒子裏面來作人的生命。"}
+{"id":"multi-direct-02","group":"multi-direct","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":true,"evidence":"貫穿全書的基本觀念乃是神作人的生命。"}
+{"id":"multi-direct-03","group":"multi-direct","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":true,"evidence":"本書主要啟示神在基督裏分賜祂自己。"}
+{"id":"multi-direct-04","group":"multi-direct","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":true,"evidence":"整本聖經的中心信息是基督與召會。"}
+{"id":"multi-direct-05","group":"multi-direct","question":"What is the central thought of the Bible?","locale":"en","expected_support":true,"evidence":"The central thought of the Bible is that God desires to work Himself into man."}
+{"id":"multi-direct-06","group":"multi-direct","question":"What is the Bible's main message?","locale":"en","expected_support":true,"evidence":"The Bible's main message is Christ as life for the building up of the church."}
+{"id":"multi-direct-07","group":"multi-direct","question":"What is the central thought of the Bible?","locale":"en","expected_support":true,"evidence":"Throughout the Bible, the governing thought is that God would be life to man."}
+{"id":"multi-direct-08","group":"multi-direct","question":"What is the central thought of the Bible?","locale":"en","expected_support":true,"evidence":"This book's basic concept is that God desires to make Himself one with man."}
+{"id":"multi-direct-09","group":"multi-direct","question":"What is the central thought of the Bible?","locale":"en","expected_support":true,"evidence":"This book mainly reveals God dispensing Himself into His chosen people."}
+{"id":"multi-direct-10","group":"multi-direct","question":"What is the central thought of the Bible?","locale":"en","expected_support":true,"evidence":"What the whole Bible principally reveals is Christ and the church."}
+{"id":"related-negative-01","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"中心思想。圣经开始于生命树，也结束于生命树。"}
+{"id":"related-negative-02","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"生命树在创世记和启示录中都出现，是一条重要线索。"}
+{"id":"related-negative-03","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"圣经多次提到生命、光、国度和召会。"}
+{"id":"related-negative-04","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"生命树贯穿圣经的开头和结尾。"}
+{"id":"related-negative-05","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"圣经的中心思想是什么？作者将在下一章回答。"}
+{"id":"related-negative-06","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"有人说圣经的中心思想是生命树，但本段并未明说这个结论。"}
+{"id":"related-negative-07","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"这一段圣经的中心思想是基督在万有中居首位。"}
+{"id":"related-negative-08","group":"related-negative","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"本章的主题是祷告与读经。"}
+{"id":"related-negative-09","group":"related-negative","question":"What is the central thought of the Bible?","locale":"en","expected_support":false,"evidence":"The tree of life appears at the beginning and the end of the Bible."}
+{"id":"related-negative-10","group":"related-negative","question":"What is the central thought of the Bible?","locale":"en","expected_support":false,"evidence":"Some readers say the Bible's main theme is life, but this passage does not establish that claim."}
+{"id":"insufficient-01","group":"insufficient","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"圣经是神的话，是神的呼出。"}
+{"id":"insufficient-02","group":"insufficient","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"圣经六十六卷都是神所默示的。"}
+{"id":"insufficient-03","group":"insufficient","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"我们应当每天读圣经并祷告。"}
+{"id":"insufficient-04","group":"insufficient","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"生命树表征神作人的生命。"}
+{"id":"insufficient-05","group":"insufficient","question":"圣经的中心思想是什么？","locale":"zh-Hans","expected_support":false,"evidence":"基督是圣经中最重要的人物。"}
+{"id":"insufficient-06","group":"insufficient","question":"What is the central thought of the Bible?","locale":"en","expected_support":false,"evidence":"All Scripture is God-breathed and profitable for teaching."}
+{"id":"insufficient-07","group":"insufficient","question":"What is the central thought of the Bible?","locale":"en","expected_support":false,"evidence":"The Bible contains sixty-six books."}
+{"id":"insufficient-08","group":"insufficient","question":"What is the central thought of the Bible?","locale":"en","expected_support":false,"evidence":"Christ is revealed in many passages of Scripture."}
+{"id":"insufficient-09","group":"insufficient","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":false,"evidence":"讀聖經能使人得著屬靈的供應。"}
+{"id":"insufficient-10","group":"insufficient","question":"聖經的中心思想是甚麼？","locale":"zh-Hant","expected_support":false,"evidence":"生命樹是創世記二章的重要表號。"}
