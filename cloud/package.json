@@ -3,7 +3,8 @@
   "type": "module",
   "scripts": {
     "test": "node test_worker.mjs",
-    "eval": "node phase2b_eval.mjs"
+    "eval": "node phase2b_eval.mjs",
+    "eval:central-theme": "node central_theme_eval.mjs"
   },
   "dependencies": {
     "opencc-js": "1.4.1"

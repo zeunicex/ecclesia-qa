@@ -24,8 +24,7 @@ def title(path: Path) -> tuple[str, str]:
     return code, value.split("-", 1)[0].strip()
 
 
-def main() -> int:
-    root = Path(__file__).resolve().parents[1]
+def priority_rows(root: Path) -> list[dict[str, str]]:
     existing = set()
     for jsonl in (root / "output/phase1/documents.jsonl", root / "output/phase3/documents.jsonl"):
         existing.update(json.loads(line)["source_path"] for line in jsonl.read_text(encoding="utf-8").splitlines())
@@ -45,10 +44,19 @@ def main() -> int:
         else:
             batch = "D"
         rows.append({"batch": batch, "code": code, "title": name, "source_path": str(path.relative_to(root))})
+    return rows
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    rows = priority_rows(root)
     expected = set(BATCH_A + BATCH_B)
     found = {row["code"] for row in rows}
     assert expected <= found, sorted(expected - found)
     assert len(rows) == 304, len(rows)
+    remaining_batches = [row["batch"] for batch in "CDE" for row in rows if row["batch"] == batch]
+    assert len(remaining_batches) == 204, len(remaining_batches)
+    assert remaining_batches == sorted(remaining_batches)
 
     descriptions = {
         "A": "最高优先：覆盖最常见的基础真理、救恩、基督、那灵、生命、召会及初信问题。",

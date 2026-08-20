@@ -1133,7 +1133,7 @@ function questionSubject(question) {
     } else if (type === "significance") {
       value = value.replace(/^(?:为什么|为何)(?:说)?\s*/, "").replace(/(?:为什么)?(?:这么|这样)?重要$|有多重要$|(?:的)?(?:重要性|意义|作用)|(?:有)?(?:什么|何)用$/g, "");
     } else if (type === "central_theme") {
-      value = value.replace(/(?:的)?(?:中心思想|中心内容|中心信息|中心启示|主要题旨|主旨|主题)(?:是什么)?$/g, "");
+      value = value.replace(/(?:的)?(?:中心思想|中心内容|中心信息|中心启示|主要题旨|主旨|主题)(?:是(?:什么|甚么))?$/g, "");
     } else if (type === "content") {
       value = value
         .replace(/(?:主要|大体)?(?:讲|说|教导|启示|记载|包含)(?:了|的是)?(?:什么|哪些|甚么)(?:内容)?$/g, "")
@@ -1276,16 +1276,26 @@ function modelForQuestion(question) {
 
 function centralThemeEvidence(evidence, question) {
   if (questionIntent(question).type !== "central_theme") return evidence;
-  const subject = toSimplified(questionSubject(question)).toLowerCase()
+  const subject = toSimplified(questionSubject(question)).toLowerCase().replace(/幺/g, "么")
     .replace(/^(?:the|a|an)\s+/i, "").replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "");
   if (!subject) return [];
-  const escaped = subject.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const chineseClaim = new RegExp(`${escaped}.{0,240}(?:中心思想|主要(?:的)?思想|基本观念|中心信息|中心启示|主要题旨|主旨|主题)[，,:：\\s]{0,8}(?:是(?!什么|甚么|何)|乃是|就是|在于)`);
-  const englishClaim = new RegExp(`${escaped}.{0,240}(?:central thought|central idea|central message|main theme|main message|governing theme)[,:\\s]{0,12}(?:is|consists in|concerns)`, "i");
+  const bible = /^(?:圣经|聖經|bible)$/.test(subject);
+  const aliases = bible
+    ? ["圣经", "整本圣经", "全书", "本书", "这本书", "bible", "thebible", "wholebible", "wholebook", "thisbook", "thebook"]
+    : [subject, "本书", "这本书", "thisbook", "thebook"];
+  const entity = `(?:${aliases.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`;
+  const zhTheme = "(?:中心思想|主要(?:的)?思想|基本观念|中心信息|中心启示|主要题旨|主旨|主题|支配的信息|所陈明的中心)";
+  const enTheme = "(?:centralthought|centralidea|centralmessage|maintheme|mainmessage|governingtheme|governingthought|basicconcept)";
+  const zhClaim = new RegExp(`${entity}.{0,100}${zhTheme}(?:是(?!什么|甚么|何)|乃是|就是|在于)|${entity}.{0,80}(?:主要|中心)(?:启示|陈明|说明)(?:的是|是)?[^。！？]{2,}`);
+  const zhDirectCenter = new RegExp(`${entity}(?:的)?中心(?:和根本|、根本)?(?:就是|是(?!什么|甚么|何)|乃是|乃在于|在于)`);
+  const enClaim = new RegExp(`${entity}.{0,100}${enTheme}(?:is|consistsin|concerns)|${enTheme}(?:of)?${entity}(?:is|consistsin|concerns)|${entity}.{0,80}(?:mainly|principally)reveals.{2,}`, "i");
   return evidence.filter(item => {
-    const text = toSimplified(String(item.text || "")).toLowerCase().replace(/\s+/g, " ");
+    const text = toSimplified(String(item.text || "")).toLowerCase().replace(/幺/g, "么").replace(/\s+/g, " ");
     const compact = text.replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "");
-    return compact.includes(subject) && (chineseClaim.test(text.replace(/[\s“”"'‘’？?，,。.!！:：;；]/g, "")) || englishClaim.test(text));
+    if (/(?:有人说|有人认为|有人以为|有些人说|据称|并未明说|没有明说|不能据此|不可据此|some (?:people|readers) (?:say|think|call)|does not (?:say|state|establish)|not enough to establish)/i.test(text)) return false;
+    if (/(?:中心思想|主要思想|主旨|主题)(?:是什么|是甚么).{0,24}(?:将在.{0,10}|稍后|下一章|后文)(?:回答|说明|交代)/i.test(compact)) return false;
+    if (bible && /(?:这一|这|此|本)(?:段|章|节|篇)(?:圣经)?[^。！？]{0,40}(?:中心思想|主旨|主题)|(?:this|the) (?:passage|chapter|section).{0,40}(?:central thought|main theme|theme)/i.test(text)) return false;
+    return zhClaim.test(compact) || zhDirectCenter.test(compact) || enClaim.test(compact);
   });
 }
 

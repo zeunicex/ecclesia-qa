@@ -12,12 +12,13 @@ Current deployment:
 - Workers AI `@cf/meta/m2m100-1.2b` for English ↔ Chinese Scripture-search and answer translation
 - Protected Cloudflare Worker `ecclesia-qa`: <https://ecclesia-qa.ecclesia-qa-2026.workers.dev>
 
-Validated remote counts:
+Validated remote counts after the 1.8 GiB priority prefix import:
 
-- 83 documents
+- 216 documents
 - 62,320 Bible rows: 31,102 English verses plus 31,218 Chinese rows, including 116 Psalm superscriptions
 - 30,676 footnotes in D1 and Pinecone: 15,793 Chinese and 14,883 English
-- 103,100 Pinecone reference-book records, including the corrected complete Life-study corpus and Batch A
+- 144,317 Pinecone reference-book records, including the corrected complete Life-study corpus, Batches A and B, all of Batch C, and the first 24 Batch D books
+- 188,423 Pinecone records across all three namespaces; D1 `search_chunks` contains 188,427 rows
 
 Phase 3 local import package:
 
@@ -52,6 +53,25 @@ Phase 4D Life-study source repair:
 - Pinecone removed 4,416 obsolete IDs and upserted all 52,287 corrected records; `phase1` now contains 103,100 records
 - Across all three Pinecone namespaces there are 147,206 records; D1 `search_chunks` also contains 147,206 rows
 - The local rebuild package and resumable migration state are in `output/phase4d-life-study` and `output/cloud/pinecone-phase4d-life-study-progress.json`
+
+Priority Batch B expansion:
+
+- The next 50 books were selected in the fixed order from `scripts/priority_manifest.py`; no lower-priority book skipped a higher-priority book
+- The build produced 17,801 unique chunks: 5,425 Simplified Chinese, 12,374 English, and 2 bilingual metadata/title chunks; no document was deferred by the 1.6 GiB conservative safety ceiling
+- D1 contains all 50 Batch B documents and 17,801 new search chunks; the remote database now has 133 documents, 165,011 search rows, and a reported size of 1,172.40 MB
+- Pinecone `phase1` increased from 103,100 to 120,901 records; `describe_index_stats` reports 165,007 records across all namespaces, with the Bible and footnote namespaces unchanged
+- The conservative projected Pinecone footprint is 1.574 GiB, leaving about 0.426 GiB below the 2 GiB planning ceiling; Pinecone reports vector counts but not actual byte usage for this serverless index
+- The local package, D1 export, resumable state, and verified stats are in `output/phase4-batch-b`, `output/cloud/d1-phase4-b.sql`, `output/cloud/pinecone-phase4-b-progress.json`, and `output/cloud/pinecone-phase4-b-stats.json`
+
+Remaining hierarchy import under the 1.8 GiB ceiling:
+
+- Selection followed the reviewed C → D → E hierarchy as a strict prefix: all 59 Batch C books, followed by the first 24 Batch D books; no smaller lower-priority book skipped a higher-priority book
+- The selected 83 books produced 23,416 unique chunks: 7,058 Simplified Chinese, 16,357 English, and 1 bilingual metadata/title chunk
+- The last selected source is `book-2080`, *The Messenger of the Cross* (`《十字架的使者》`); the first deferred source is `book-2081`, *The Knowledge That Should Be in the Lord's Recovery* (`《主恢复中应有的认识》`)
+- The selected prefix brings Pinecone to 188,423 records, a conservative 1.797 GiB estimate. Adding `book-2081`'s 643 chunks would reach 189,066 records or 1.803074 GiB, so it and all later books remain deferred
+- D1 contains all 83 new documents and 23,416 new search chunks; the remote database now has 216 documents, 188,427 search rows, and a reported size of 1,298,726,912 bytes
+- Pinecone `phase1` now contains 144,317 records; `phase2-bible` remains at 13,430 and `phase2-footnotes` at 30,676, for 188,423 total records
+- The local package, split D1 import, resumable Pinecone state, and verified stats are in `output/phase4-remaining`, `output/cloud/d1-phase4-remaining-parts`, `output/cloud/pinecone-phase4-remaining-progress.json`, and `output/cloud/pinecone-phase4-remaining-stats.json`
 
 Phase 4E dual question modes:
 
@@ -89,6 +109,12 @@ npx --yes wrangler@latest d1 execute ecclesia-phase1 --remote --file=output/clou
 PINECONE_API_KEY=... python3 cloud/pinecone_import.py --chunks output/phase3/chunks.jsonl --documents output/phase3/documents.jsonl --namespace phase1 --state output/cloud/pinecone-phase3-progress.json --source-type reference_book
 python3 scripts/phase3_build.py --life-only --out output/phase4d-life-study
 python3 cloud/export_phase3_d1.py --chunks output/phase4d-life-study/chunks.jsonl --documents output/phase4d-life-study/documents.jsonl --out output/cloud/d1-phase4d-life-study.sql
+python3 scripts/phase4_build.py --batch B
+python3 cloud/export_phase3_d1.py --chunks output/phase4-batch-b/chunks.jsonl --documents output/phase4-batch-b/documents.jsonl --out output/cloud/d1-phase4-b.sql
+./cloud/import_batch_b.command
+python3 scripts/phase4_build.py --batch remaining --current-records 165007 --ceiling-gib 1.8 --out output/phase4-remaining
+python3 cloud/export_phase3_d1.py --chunks output/phase4-remaining/chunks.jsonl --documents output/phase4-remaining/documents.jsonl --out output/cloud/d1-phase4-remaining.sql
+./cloud/import_batch_b.command --remaining
 ```
 
 Secrets are not stored in this repository. `PINECONE_API_KEY` is already configured as an encrypted Worker secret.
@@ -128,9 +154,32 @@ Pinecone HTTP 429 responses degrade to a localized `semantic_temporarily_unavail
 ```bash
 cd cloud
 npm test
+npm run eval:central-theme
 ACCESS_KEY=... npm run eval
 ```
 
-`eval/phase2b.jsonl` contains 28 adjudicated cases across Simplified Chinese, Traditional Chinese, and English, including exact lookups, English Recovery Version footnotes, Scripture location, doctrine, semantic footnotes, unsupported history, false premises, missing references, and multi-point answer coverage.
+On the project Mac, the access key can be kept in macOS Keychain instead of shell history or repository files:
+
+```bash
+./run_full_eval.command
+```
+
+If the key is not already present, `run_full_eval.command` prompts for it without placing it in the command line, saves it in macOS Keychain, runs the focused gate, unit checks, and authenticated end-to-end suite, and writes non-secret production and Preview JSON results to `output/eval/phase2b-baseline.json` and `output/eval/phase2b-preview.json`. The key is read into the process environment only for the duration of the evaluation and is never printed or written.
+
+`eval/phase2b.jsonl` contains 32 adjudicated cases across Simplified Chinese, Traditional Chinese, and English, including exact lookups, English Recovery Version footnotes, Scripture location, doctrine, semantic footnotes, unsupported history, false premises, missing references, multi-point answer coverage, multilingual central-theme answers, forbidden citations/claims, and central-theme abstention.
+
+### Quality-change gate
+
+Every new retrieval, intent, evidence, answerability, or generation rule must be treated as an error-class change rather than a one-question patch:
+
+1. Add a labeled batch containing positive forms, multilingual/paraphrased forms, related-but-insufficient evidence, and cases that must abstain.
+2. Record the previous behavior before changing the rule.
+3. Run the focused batch, `npm test`, and the full authenticated `npm run eval` suite.
+4. Compare correct-answer recall, correct rejection, false rejection, citation/support precision, and unrelated regressions.
+5. Do not commit or deploy unless the focused suite improves overall, its declared thresholds pass, and the full suite has no new regression.
+
+`eval/central_theme_evidence.jsonl` is the first focused gate: 40 adjudicated Simplified Chinese, Traditional Chinese, and English evidence relationships. `npm run eval:central-theme` compares the pre-gate baseline with the candidate rule and fails unless direct-support recall is at least 95%, correct rejection and support precision are at least 90%, false rejection is at most 5%, overall accuracy improves, and non-central-theme retrieval remains unchanged. This focused test validates evidence eligibility only; it does not replace the authenticated end-to-end suite.
+
+The 2026-08-20 non-production Preview acceptance passed the focused gate at 40/40 and the four targeted multilingual central-theme cases at 4/4. The full authenticated suite improved from 24/32 on the production baseline to 28/32 on Preview, with no new failing case in the final comparison. The Preview version was not promoted to production traffic.
 
 Do not remove the access-key requirement or publicly expose excerpts until the rights policy is reviewed.
