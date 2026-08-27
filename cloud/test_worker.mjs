@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQuery, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQuery, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -210,6 +210,15 @@ assert.equal(scriptureQuoteText("是谁说的来吧我们归向耶和华 为什�
 assert.equal(scriptureQuoteText("Who said ‘Come and let us return to Jehovah,’ and why?"), "Come and let us return to Jehovah");
 assert.equal(directQuestionNeedsSemanticSearch("Who is speaking in Hosea 6:1–2?"), true);
 assert.equal(directQuestionNeedsSemanticSearch("What does Hosea 6:1 say?"), false);
+assert.equal(scriptureInterpretationIntent("Who is speaking in Hosea 6:1–2?"), true);
+assert.equal(scriptureInterpretationIntent("What does Hosea 6:1 mean?"), true);
+assert.equal(scriptureInterpretationIntent("What does Hosea 6:1 say?"), false);
+assert.deepEqual(orderEvidenceLayers([
+  { source_id: "book", source_type: "reference_book" },
+  { source_id: "note", source_type: "footnote" },
+  { source_id: "context", source_type: "bible", evidence_role: "context" },
+  { source_id: "verse", source_type: "bible", evidence_role: "verse" }
+]).map(item => item.source_id), ["verse", "context", "note", "book"]);
 assert.equal(doctrineCoverage("Who is speaking in Hosea 6:1–2?").id, "hosea_return_to_jehovah");
 assert.equal(englishScriptureSubject("Where in the Bible is the church in Ephesus mentioned?"), "church Ephesus");
 assert.equal(await scriptureSearchQuery({ AI: { run: async () => ({ translated_text: "以弗所的召会" }) } }, "Where in the Bible is the church in Ephesus mentioned?", "en"), "以弗所的召会");
@@ -411,23 +420,41 @@ assert.equal(preciseReferences[0].citation_id, "S1");
 assert.match(preciseReferences[0].text, /^The impartation into us/);
 assert.match(preciseReferences[0].text, /experiential knowledge\.$/);
 assert.doesNotMatch(preciseReferences[0].text, /CONTENTS|^e and|preposition through$/);
+const hoseaBibleRows = [
+  { book_name: "Hosea", chapter: 6, verse: 1, text: "Come and let us return to Jehovah; For He has torn us, but He will heal us.", source_id: "bible:rcv-en:Hos.6.1" },
+  { book_name: "Hosea", chapter: 6, verse: 2, text: "He will enliven us after two days; On the third day He will raise us up.", source_id: "bible:rcv-en:Hos.6.2" }
+];
 const hoseaTestEnv = {
   DB: {
-    prepare: sql => ({ bind: () => ({ all: async () => ({ results: sql.includes("FROM search_chunks") ? [{
-      source_id: "doc:book-2157-truth-lessons:pdf-1706:en-001",
-      source_type: "reference_book",
-      title: "Truth Lessons",
-      reference: "Truth Lessons, Level 2",
-      pdf_page: 1706,
-      language: "en",
-      text: "The prophet Hosea said, ‘Come and let us return to Jehovah.’ The reason is in the same verse: ‘For He has torn us, but He will heal us.’"
-    }] : [] }) }) })
+    prepare: sql => ({ bind: () => ({ all: async () => {
+      if (sql.includes("FROM search_chunks")) return { results: [{
+        source_id: "doc:book-2157-truth-lessons:pdf-1706:en-001",
+        source_type: "reference_book",
+        title: "Truth Lessons",
+        reference: "Truth Lessons, Level 2",
+        pdf_page: 1706,
+        language: "en",
+        text: "The prophet Hosea, the writer of the book, said, ‘Come and let us return to Jehovah.’ The reason is in the same verse: ‘For He has torn us, but He will heal us.’"
+      }] };
+      if (sql.includes("FROM footnotes")) return { results: [{ book_name: "Hosea", chapter: 6, verse: 1, note_no: 1, text: "This is Hosea's call to Israel to return to Jehovah.", source_id: "footnote:rcv-en:Hos.6.1.1" }] };
+      if (sql.includes("ORDER BY chapter DESC")) return { results: [{ book_name: "Hosea", chapter: 5, verse: 15, text: "I will go away and return to My place, until they acknowledge their offense.", source_id: "bible:rcv-en:Hos.5.15" }] };
+      if (sql.includes("ORDER BY chapter ASC")) return { results: [{ book_name: "Hosea", chapter: 6, verse: 3, text: "Therefore let us know, let us pursue knowing Jehovah.", source_id: "bible:rcv-en:Hos.6.3" }] };
+      if (sql.includes("FROM bible_verses")) return { results: hoseaBibleRows };
+      return { results: [] };
+    } }) })
   }
 };
+const hoseaContext = await scriptureContextEvidence(hoseaTestEnv, { book: "Hos", chapter: 6, start: 1, end: 2 }, "en");
+assert.deepEqual(hoseaContext.map(item => item.source_id), ["bible:rcv-en:Hos.6.1", "bible:rcv-en:Hos.6.2", "bible:rcv-en:Hos.5.15", "bible:rcv-en:Hos.6.3"]);
+assert.deepEqual(hoseaContext.map(item => item.evidence_role), ["verse", "verse", "context", "context"]);
+const hoseaNotes = await footnotesForReference(hoseaTestEnv, { book: "Hos", chapter: 6, start: 1, end: 2 }, "en");
+assert.equal(hoseaNotes[0].evidence_role, "footnote");
 const hoseaReferenceResult = await answerQuery(hoseaTestEnv, "Who is speaking in Hosea 6:1–2?", "en", {}, false);
-assert.equal(hoseaReferenceResult.presentation, "quotes");
-assert.equal(hoseaReferenceResult.answer_markdown, "");
+assert.equal(hoseaReferenceResult.presentation, "study");
+assert.match(hoseaReferenceResult.answer_markdown, /prophet Hosea, the writer of the book/i);
 assert.equal(hoseaReferenceResult.answerable, true);
-assert.match(hoseaReferenceResult.evidence[0].text, /prophet Hosea said/);
+assert.deepEqual(hoseaReferenceResult.evidence.slice(0, 4).map(item => item.evidence_role), ["verse", "verse", "context", "context"]);
+assert.equal(hoseaReferenceResult.evidence.find(item => item.source_type === "footnote").evidence_role, "footnote");
+assert.match(hoseaReferenceResult.evidence.find(item => item.source_type === "reference_book").text, /prophet Hosea/);
 
 console.log("worker unit checks passed");
