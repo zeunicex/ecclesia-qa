@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, parseNumber, pineconeFailure, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQuery, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -84,6 +84,7 @@ assert.equal(questionIntent("What verses prove the Divine Trinity is one? ").typ
 assert.equal(questionIntent("难道不是神永远的经纶吗？").type, "verification");
 assert.equal(questionIntent("倪柝声什么时候离开上海？").type, "time");
 assert.equal(questionIntent("是谁说的来吧我们归向耶和华？").type, "person");
+assert.equal(questionIntent("Who is speaking in Hosea 6:1–2?").type, "person");
 assert.equal(questionIntent("圣经哪里讲到以弗所召会？").type, "scripture_location");
 assert.equal(questionIntent("圣经是什么？").type, "definition");
 assert.equal(questionIntent("圣经讲什么？").type, "content");
@@ -204,8 +205,12 @@ assert.equal(scriptureLocationIntent("Where in the Bible is the church in Ephesu
 assert.equal(scriptureLocationIntent("为什么只有一个新人"), false);
 assert.equal(scriptureQuoteIntent("是谁说的来吧我们归向耶和华 为什么"), true);
 assert.equal(scriptureQuoteIntent("Who said ‘Come and let us return to Jehovah,’ and why?"), true);
+assert.equal(scriptureQuoteIntent("Who is speaking in Hosea 6:1–2?"), true);
 assert.equal(scriptureQuoteText("是谁说的来吧我们归向耶和华 为什么"), "来吧我们归向耶和华");
 assert.equal(scriptureQuoteText("Who said ‘Come and let us return to Jehovah,’ and why?"), "Come and let us return to Jehovah");
+assert.equal(directQuestionNeedsSemanticSearch("Who is speaking in Hosea 6:1–2?"), true);
+assert.equal(directQuestionNeedsSemanticSearch("What does Hosea 6:1 say?"), false);
+assert.equal(doctrineCoverage("Who is speaking in Hosea 6:1–2?").id, "hosea_return_to_jehovah");
 assert.equal(englishScriptureSubject("Where in the Bible is the church in Ephesus mentioned?"), "church Ephesus");
 assert.equal(await scriptureSearchQuery({ AI: { run: async () => ({ translated_text: "以弗所的召会" }) } }, "Where in the Bible is the church in Ephesus mentioned?", "en"), "以弗所的召会");
 assert.equal(await localizeGeneratedAnswer({ AI: { run: async () => ({ translated_text: "Revelation 2:1" }) } }, "启示录 2:1 [S1]", "en"), "Revelation 2:1 [S1]");
@@ -333,6 +338,7 @@ assert.equal(parseNumber("一百一十九"), 119);
 assert.equal(requestedNote("第一個註解"), 1);
 assert.deepEqual(directReference("約翰福音一章一節的第一個註解說什麼？"), { book: "John", chapter: 1, start: 1, end: 1, note: 1 });
 assert.deepEqual(directReference("马太福音28:19"), { book: "Matt", chapter: 28, start: 19, end: 19, note: null });
+assert.deepEqual(directReference("Hosea 6:1–2"), { book: "Hos", chapter: 6, start: 1, end: 2, note: null });
 assert.deepEqual(directReference("Ephesians 4:20, footnote 1"), { book: "Eph", chapter: 4, start: 20, end: 20, note: 1 });
 const exactBinds = [];
 const exactEnglish = await exactLookup({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
@@ -388,5 +394,40 @@ assert.deepEqual(falseSubstringEvidence, []);
 const d1Evidence = await d1KeywordEvidence({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => ({ results: [{ source_id: "doc:1", source_type: "reference_book", title: "书名", reference: "章节", pdf_page: 3, pdf_page_end: 4, language: "zh-Hans", text: "神圣启示的最高峰", rank: -2 }] }) }) }) } }, "什么是神圣启示的最高峰？", ["reference_book"]);
 assert.equal(d1Evidence[0].source_id, "doc:1");
 assert.equal(d1Evidence[0].score, 2);
+
+assert.equal(normalizeQueryText("how can i receive the impartation of llife"), "how can i receive the impartation of life");
+assert.equal(normalizeSourceText("Life requires life but\nalso the life supply.\nTeaching continues."), "Life requires life but also the life supply. Teaching continues.");
+assert.equal(normalizeSourceText("The divine dis-\npensing supplies life."), "The divine dispensing supplies life.");
+assert.equal(precisePassage("iven and healed. If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle. A trailing frag", "how can I impart life", 220), "If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle.");
+assert.equal(sourceQuality({ source_type: "reference_book", text: "■ CONTENTS 1. Introduction 2. Four Aspects of the Spirit 3. The Compound Spirit" }, "how can I receive the impartation of life"), 0);
+assert.equal(sourceQuality({ source_type: "reference_book", title: "The Crucified Christ", text: "CONTENTS 1. The Life and the Way 2. God's Eternal Purpose and God's Work" }, "how can I receive the impartation of life"), 0);
+assert.ok(sourceQuality({ source_type: "reference_book", text: "The impartation into us of all the things of life is through the full knowledge of God. This full knowledge is a deep, thorough, experiential knowledge." }, "how can I receive the impartation of llife") > 0);
+const preciseReferences = prepareReferenceEvidence([
+  { source_id: "toc", source_type: "reference_book", title: "The Spirit and the Body", text: "■ CONTENTS 1. Introduction 2. Four Aspects of the Spirit" },
+  { source_id: "answer", source_type: "reference_book", title: "Life-study of Second Peter", pdf_page: 13218, text: "e and godliness through the full knowledge of Him. The impartation into us of all the things of life is through the full knowledge of God. This full knowledge is a deep, thorough, experiential knowledge. The preposition through" }
+], "how can i receive the impartation of llife", 5);
+assert.equal(preciseReferences.length, 1);
+assert.equal(preciseReferences[0].citation_id, "S1");
+assert.match(preciseReferences[0].text, /^The impartation into us/);
+assert.match(preciseReferences[0].text, /experiential knowledge\.$/);
+assert.doesNotMatch(preciseReferences[0].text, /CONTENTS|^e and|preposition through$/);
+const hoseaTestEnv = {
+  DB: {
+    prepare: sql => ({ bind: () => ({ all: async () => ({ results: sql.includes("FROM search_chunks") ? [{
+      source_id: "doc:book-2157-truth-lessons:pdf-1706:en-001",
+      source_type: "reference_book",
+      title: "Truth Lessons",
+      reference: "Truth Lessons, Level 2",
+      pdf_page: 1706,
+      language: "en",
+      text: "The prophet Hosea said, ‘Come and let us return to Jehovah.’ The reason is in the same verse: ‘For He has torn us, but He will heal us.’"
+    }] : [] }) }) })
+  }
+};
+const hoseaReferenceResult = await answerQuery(hoseaTestEnv, "Who is speaking in Hosea 6:1–2?", "en", {}, false);
+assert.equal(hoseaReferenceResult.presentation, "quotes");
+assert.equal(hoseaReferenceResult.answer_markdown, "");
+assert.equal(hoseaReferenceResult.answerable, true);
+assert.match(hoseaReferenceResult.evidence[0].text, /prophet Hosea said/);
 
 console.log("worker unit checks passed");
