@@ -1040,18 +1040,17 @@ function doctrineExtractiveAnswer(card, evidence, locale) {
   };
 }
 
-async function semanticLookup(env, question, locale = "zh-Hans") {
+async function primarySemanticLookup(env, question, locale = "zh-Hans") {
   if (footnoteIntent(question)) {
     return { mode: "footnote_retrieval", evidence: await footnoteEvidence(env, question, locale) };
   }
-  const [books, notes, reviewedBible, semanticBible] = await Promise.all([
-    referenceBookEvidence(env, question),
+  const [notes, reviewedBible, semanticBible] = await Promise.all([
     footnoteEvidence(env, question, locale),
     reviewedTopicEvidence(env, question, locale),
     scriptureSemanticLookup(env, question, locale)
   ]);
   const bible = [...reviewedBible.map(item => ({ ...item, evidence_role: "scripture" })), ...semanticBible.evidence.map(item => ({ ...item, evidence_role: "scripture" }))];
-  return { mode: "semantic_retrieval", evidence: uniqueEvidence([...bible, ...notes, ...books]) };
+  return { mode: "primary_source_retrieval", evidence: uniqueEvidence([...bible, ...notes]) };
 }
 
 async function scriptureSemanticLookup(env, question, locale) {
@@ -1099,9 +1098,7 @@ function serverTiming(metrics) {
 
 async function presentationEvidence(env, evidence, result, locale, question = "") {
   const cited = new Set(String(result.answer || "").match(/S\d+/g) || []);
-  const selected = result.presentation === "study"
-    ? evidence
-    : result.answerable && cited.size ? evidence.filter(item => cited.has(item.citation_id)) : evidence;
+  const selected = result.answerable && cited.size ? evidence.filter(item => cited.has(item.citation_id)) : evidence;
   const displayed = selected.map(item => ({
     ...item,
     text: precisePassage(item.text, question, 1100) || "",
@@ -1811,11 +1808,59 @@ async function quoteFirstResult(env, base, evidence, locale, question) {
   };
 }
 
+async function composedAnswerResult(env, base, question, locale, evidence, coverage, conversational, metrics) {
+  const studyPresentation = !conversational;
+  const presentation = studyPresentation ? { presentation: "study" } : {};
+  const extractive = questionIntent(question).type === "verification" ? null : doctrineExtractiveAnswer(coverage, evidence, locale);
+  if (extractive) {
+    const responseShape = { ...extractive, ...presentation };
+    const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, responseShape, locale, question));
+    return {
+      ...base,
+      evidence: responseEvidence,
+      answer_markdown: localizeAnswer(extractive.answer, locale),
+      answerable: true,
+      answerability_reason: extractive.reason,
+      generated: false,
+      ...presentation,
+      source_faithful: true,
+      reranker_model: RERANK_MODEL
+    };
+  }
+  try {
+    const result = await measured(metrics, "generation", () => synthesize(env, question, locale, evidence, coverage, conversational));
+    const responseShape = { ...result, ...presentation };
+    const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, responseShape, locale, question));
+    return {
+      ...base,
+      evidence: responseEvidence,
+      answer_markdown: await localizeGeneratedAnswer(env, result.answer, locale),
+      answerable: result.answerable,
+      answerability_reason: result.reason,
+      generated: true,
+      ...presentation,
+      model: result.model,
+      reranker_model: RERANK_MODEL
+    };
+  } catch (error) {
+    return {
+      ...base,
+      evidence,
+      answer_markdown: fallbackAnswer(locale, evidence.length > 0),
+      answerable: false,
+      answerability_reason: "generation_failed",
+      generated: false,
+      ...presentation,
+      generation_error: String(error?.message || error)
+    };
+  }
+}
+
 async function answerQuery(env, question, locale, metrics = {}, conversational = false) {
   const exact = directQuestionNeedsSemanticSearch(question) || scriptureInterpretationIntent(question)
     ? null
     : await measured(metrics, "exact", () => exactLookup(env, question, locale));
-  if (exact) {
+  if (exact?.mode === "direct_scripture") {
     const evidence = labelEvidence(exact.evidence);
     if (!conversational) return quoteFirstResult(env, exact, evidence, locale, question);
     const supported = footnoteIntent(question) ? evidence.some(item => item.source_type === "footnote") : evidence.length > 0;
@@ -1831,11 +1876,11 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     };
   }
   const coverage = doctrineCoverage(question);
-  let coverageEvidence = [];
-  if (coverage) {
-    try { coverageEvidence = await measured(metrics, "coverage", () => doctrineAnchorEvidence(env, coverage, locale)); }
-    catch { coverageEvidence = []; }
-  }
+  const loadCoverageEvidence = async () => {
+    if (!coverage) return [];
+    try { return await measured(metrics, "coverage", () => doctrineAnchorEvidence(env, coverage, locale)); }
+    catch { return []; }
+  };
   if (directReference(question) || scriptureLocationIntent(question) || scriptureQuoteIntent(question)) {
     const reference = directReference(question);
     let scripture;
@@ -1856,140 +1901,91 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
         scripture = degraded;
       }
     }
-    let relatedBooks = [];
     let relatedNotes = [];
     try {
-      [relatedBooks, relatedNotes] = await Promise.all([
-        measured(metrics, "reference_context", () => referenceBookEvidence(env, question)),
-        exactNotes.length ? Promise.resolve([]) : measured(metrics, "footnote_context", () => footnoteEvidence(env, question, locale))
-      ]);
+      relatedNotes = exactNotes.length ? [] : await measured(metrics, "footnote_context", () => footnoteEvidence(env, question, locale));
     } catch {
-      relatedBooks = [];
       relatedNotes = [];
     }
-    scripture = {
+    const primaryBase = {
       ...scripture,
-      ...(coverage ? { coverage_card: coverage.id } : {}),
-      evidence: uniqueEvidence([...scripture.evidence, ...exactNotes, ...relatedNotes, ...coverageEvidence, ...relatedBooks])
+      evidence: uniqueEvidence([...scripture.evidence, ...exactNotes, ...relatedNotes])
     };
-    const candidates = filterEvidenceCandidates(scripture.evidence, question);
-    const evidence = labelEvidence(await measured(metrics, "rerank", () => layeredEvidence(env, candidates, scripture.rerank_query || question, {
+    const primaryCandidates = filterEvidenceCandidates(primaryBase.evidence, question);
+    const primaryEvidence = labelEvidence(await measured(metrics, "rerank_primary", () => layeredEvidence(env, primaryCandidates, scripture.rerank_query || question, {
       verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : 4,
       contextLimit: reference ? 2 : 1,
       footnoteLimit: 2,
-      referenceLimit: 3
+      referenceLimit: 0
     })));
     const studyPresentation = !conversational && scriptureInterpretationIntent(question);
-    if (!conversational && !studyPresentation) return quoteFirstResult(env, scripture, evidence, locale, question);
-    const extractive = questionIntent(question).type === "verification" ? null : doctrineExtractiveAnswer(coverage, evidence, locale);
-    if (extractive) {
-      const responseShape = { ...extractive, ...(studyPresentation ? { presentation: "study" } : {}) };
-      const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, responseShape, locale, question));
-      return {
-        ...scripture,
-        evidence: responseEvidence,
-        answer_markdown: localizeAnswer(extractive.answer, locale),
-        answerable: true,
-        answerability_reason: extractive.reason,
-        generated: false,
-        ...(studyPresentation ? { presentation: "study" } : {}),
-        source_faithful: true,
-        reranker_model: RERANK_MODEL
-      };
-    }
+    if (!conversational && !studyPresentation) return quoteFirstResult(env, primaryBase, primaryEvidence, locale, question);
+    const primaryResult = await composedAnswerResult(env, primaryBase, question, locale, primaryEvidence, null, conversational, metrics);
+    if (primaryResult.answerable) return primaryResult;
+
+    const coverageEvidence = await loadCoverageEvidence();
+    let relatedBooks = [];
     try {
-      const result = await measured(metrics, "generation", () => synthesize(env, question, locale, evidence, coverage, conversational));
-      const responseShape = { ...result, ...(studyPresentation ? { presentation: "study" } : {}) };
-      const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, responseShape, locale, question));
-      return {
-        ...scripture,
-        evidence: responseEvidence,
-        answer_markdown: await localizeGeneratedAnswer(env, result.answer, locale),
-        answerable: result.answerable,
-        answerability_reason: result.reason,
-        generated: true,
-        ...(studyPresentation ? { presentation: "study" } : {}),
-        model: result.model,
-        reranker_model: RERANK_MODEL
-      };
+      relatedBooks = await measured(metrics, "reference_context", () => referenceBookEvidence(env, question));
     } catch (error) {
-      return {
-        ...scripture,
-        evidence,
-        answer_markdown: fallbackAnswer(locale, evidence.length > 0),
-        answerable: false,
-        answerability_reason: "generation_failed",
-        generated: false,
-        ...(studyPresentation ? { presentation: "study" } : {}),
-        generation_error: String(error?.message || error)
-      };
+      const degraded = await measured(metrics, "reference_fallback", () => d1FallbackLookup(env, question, locale, error, ["reference_book"], "reference_keyword_fallback"));
+      relatedBooks = degraded?.evidence || [];
     }
+    const expandedRaw = uniqueEvidence([...primaryBase.evidence, ...coverageEvidence, ...relatedBooks]);
+    if (expandedRaw.length === primaryBase.evidence.length) return primaryResult;
+    const expandedBase = { ...primaryBase, ...(coverage ? { coverage_card: coverage.id } : {}), evidence: expandedRaw };
+    const expandedCandidates = filterEvidenceCandidates(expandedRaw, question);
+    const expandedEvidence = labelEvidence(await measured(metrics, "rerank_expanded", () => layeredEvidence(env, expandedCandidates, scripture.rerank_query || question, {
+      verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : 4,
+      contextLimit: reference ? 2 : 1,
+      footnoteLimit: 2,
+      referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : 3
+    })));
+    return composedAnswerResult(env, expandedBase, question, locale, expandedEvidence, coverage, conversational, metrics);
   }
-  let semantic;
-  try { semantic = await measured(metrics, "retrieval", () => semanticLookup(env, question, locale)); }
+  let primarySemantic;
+  try { primarySemantic = await measured(metrics, "primary_retrieval", () => primarySemanticLookup(env, question, locale)); }
   catch (error) {
-    const sourceTypes = footnoteIntent(question) ? ["footnote"] : ["bible", "footnote", "reference_book"];
-    const degraded = await measured(metrics, "fallback", () => d1FallbackLookup(env, question, locale, error, sourceTypes, "d1_keyword_fallback"));
-    if (degraded) {
-      if (degraded.mode === "semantic_temporarily_unavailable") {
-        if (!coverageEvidence.length) return degraded;
-        semantic = { mode: "doctrine_coverage_fallback", evidence: coverageEvidence, degraded: true, degradation_reason: degraded.answerability_reason };
-      } else semantic = degraded;
-    } else {
-      throw error;
-    }
+    const sourceTypes = footnoteIntent(question) ? ["footnote"] : ["bible", "footnote"];
+    const degraded = await measured(metrics, "primary_fallback", () => d1FallbackLookup(env, question, locale, error, sourceTypes, "primary_keyword_fallback"));
+    if (!degraded) throw error;
+    if (degraded.mode === "semantic_temporarily_unavailable") return degraded;
+    primarySemantic = degraded;
   }
-  if (coverageEvidence.length) semantic = {
-    ...semantic,
-    coverage_card: coverage.id,
-    evidence: uniqueEvidence([...coverageEvidence, ...semantic.evidence])
+  const primaryCandidates = filterEvidenceCandidates(primarySemantic.evidence, question);
+  const primaryEvidence = labelEvidence(await measured(metrics, "rerank_primary", () => layeredEvidence(env, primaryCandidates, primarySemantic.rerank_query || question, {
+    verseLimit: conversational ? 2 : 3,
+    contextLimit: 0,
+    footnoteLimit: conversational ? 2 : 3,
+    referenceLimit: 0
+  })));
+  const primaryResult = await composedAnswerResult(env, primarySemantic, question, locale, primaryEvidence, null, conversational, metrics);
+  if (primaryResult.answerable) return primaryResult;
+
+  const coverageEvidence = await loadCoverageEvidence();
+  let referenceEvidence = [];
+  try {
+    referenceEvidence = await measured(metrics, "reference_retrieval", () => referenceBookEvidence(env, question));
+  } catch (error) {
+    const degraded = await measured(metrics, "reference_fallback", () => d1FallbackLookup(env, question, locale, error, ["reference_book"], "reference_keyword_fallback"));
+    referenceEvidence = degraded?.evidence || [];
+  }
+  const expandedRaw = uniqueEvidence([...primarySemantic.evidence, ...coverageEvidence, ...referenceEvidence]);
+  if (expandedRaw.length === primarySemantic.evidence.length) return primaryResult;
+  const expandedSemantic = {
+    ...primarySemantic,
+    mode: "semantic_retrieval",
+    ...(coverage ? { coverage_card: coverage.id } : {}),
+    evidence: expandedRaw
   };
-  const candidates = filterEvidenceCandidates(semantic.evidence, question);
-  const evidence = labelEvidence(await measured(metrics, "rerank", () => layeredEvidence(env, candidates, semantic.rerank_query || question, {
+  const expandedCandidates = filterEvidenceCandidates(expandedRaw, question);
+  const expandedEvidence = labelEvidence(await measured(metrics, "rerank_expanded", () => layeredEvidence(env, expandedCandidates, primarySemantic.rerank_query || question, {
     verseLimit: conversational ? 2 : 3,
     contextLimit: 0,
     footnoteLimit: conversational ? 2 : 3,
     referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : conversational ? 3 : 4
   })));
-  if (!conversational) return quoteFirstResult(env, semantic, evidence, locale, question);
-  const extractive = questionIntent(question).type === "verification" ? null : doctrineExtractiveAnswer(coverage, evidence, locale);
-  if (extractive) {
-    const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, extractive, locale, question));
-    return {
-      ...semantic,
-      evidence: responseEvidence,
-      answer_markdown: localizeAnswer(extractive.answer, locale),
-      answerable: true,
-      answerability_reason: extractive.reason,
-      generated: false,
-      source_faithful: true,
-      reranker_model: RERANK_MODEL
-    };
-  }
-  try {
-    const result = await measured(metrics, "generation", () => synthesize(env, question, locale, evidence, coverage, conversational));
-    const responseEvidence = await measured(metrics, "presentation", () => presentationEvidence(env, evidence, result, locale, question));
-    return {
-      ...semantic,
-      evidence: responseEvidence,
-      answer_markdown: await localizeGeneratedAnswer(env, result.answer, locale),
-      answerable: result.answerable,
-      answerability_reason: result.reason,
-      generated: true,
-      model: result.model,
-      reranker_model: RERANK_MODEL
-    };
-  } catch (error) {
-    return {
-      ...semantic,
-      evidence,
-      answer_markdown: fallbackAnswer(locale, evidence.length > 0),
-      answerable: false,
-      answerability_reason: "generation_failed",
-      generated: false,
-      generation_error: String(error?.message || error)
-    };
-  }
+  return composedAnswerResult(env, expandedSemantic, question, locale, expandedEvidence, coverage, conversational, metrics);
 }
 
 export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeQueryText, normalizeSourceText, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureInterpretationIntent, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, directQuestionNeedsSemanticSearch, scriptureContextEvidence, footnotesForReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, sourceQuality, precisePassage, prepareReferenceEvidence, evidenceExcerpt, applyReranker, orderEvidenceLayers, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence, answerQuery };
