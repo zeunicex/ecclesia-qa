@@ -453,8 +453,107 @@ const hoseaReferenceResult = await answerQuery(hoseaTestEnv, "Who is speaking in
 assert.equal(hoseaReferenceResult.presentation, "study");
 assert.match(hoseaReferenceResult.answer_markdown, /prophet Hosea, the writer of the book/i);
 assert.equal(hoseaReferenceResult.answerable, true);
-assert.deepEqual(hoseaReferenceResult.evidence.slice(0, 4).map(item => item.evidence_role), ["verse", "verse", "context", "context"]);
-assert.equal(hoseaReferenceResult.evidence.find(item => item.source_type === "footnote").evidence_role, "footnote");
+assert.deepEqual(hoseaReferenceResult.evidence.map(item => item.evidence_role), ["reference"]);
 assert.match(hoseaReferenceResult.evidence.find(item => item.source_type === "reference_book").text, /prophet Hosea/);
+
+let treeReferenceSearches = 0;
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async url => {
+  const href = String(url);
+  let hits = [];
+  if (href.includes("/namespaces/phase1/search")) {
+    treeReferenceSearches += 1;
+    hits = [{
+      _id: "doc:should-not-be-used",
+      _score: 0.99,
+      fields: { source_type: "reference_book", title: "Reference book", chunk_text: "A reference-book answer that should not be retrieved when the footnote is sufficient." }
+    }];
+  } else if (href.includes("/namespaces/phase2-bible/search")) {
+    hits = [{ _id: "bible-hit", _score: 0.98, fields: { book_id: "Gen", chapter: 2, verse_start: 9, verse_end: 9, language: "en", source_type: "bible" } }];
+  } else if (href.includes("/namespaces/phase2-footnotes/search")) {
+    hits = [{
+      _id: "footnote:rcv-en:Gen.2.9.2",
+      _score: 0.99,
+      fields: {
+        book_id: "Gen", chapter: 2, verse_start: 9, verse_end: 9, note_no: 2, language: "en", source_type: "footnote",
+        heading_path: "Genesis 2:9, footnote 2",
+        chunk_text: "The tree of life signifies the Triune God embodied in Christ as life to man in the form of food."
+      }
+    }];
+  }
+  return new Response(JSON.stringify({ result: { hits } }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+};
+const treeTestEnv = {
+  PINECONE_HOST: "example.pinecone.test",
+  PINECONE_API_KEY: "test-only",
+  PINECONE_NAMESPACE: "phase1",
+  PINECONE_BIBLE_NAMESPACE: "phase2-bible",
+  PINECONE_FOOTNOTE_NAMESPACE: "phase2-footnotes",
+  DB: {
+    batch: async statements => statements.map(() => ({ results: [{
+      book_name: "Genesis",
+      chapter: 2,
+      verse: 9,
+      text: "Jehovah God caused to grow the tree of life in the middle of the garden.",
+      source_id: "bible:rcv-en:Gen.2.9"
+    }] })),
+    prepare: sql => {
+      const all = async () => {
+      if (sql.includes("FROM footnotes")) return { results: [{
+        book_name: "Genesis",
+        chapter: 2,
+        verse: 9,
+        note_no: 2,
+        text: "The tree of life signifies the Triune God embodied in Christ as life to man in the form of food.",
+        source_id: "footnote:rcv-en:Gen.2.9.2"
+      }] };
+      if (sql.includes("ORDER BY chapter DESC") || sql.includes("ORDER BY chapter ASC")) return { results: [] };
+      if (sql.includes("FROM bible_verses")) return { results: [{
+        book_name: "Genesis",
+        chapter: 2,
+        verse: 9,
+        text: "Jehovah God caused to grow the tree of life in the middle of the garden.",
+        source_id: "bible:rcv-en:Gen.2.9"
+      }] };
+      if (sql.includes("FROM search_chunks")) return { results: [{
+        source_id: "doc:should-not-be-used",
+        source_type: "reference_book",
+        title: "Reference book",
+        text: "A reference-book answer that should not be retrieved when the footnote is sufficient."
+      }] };
+      return { results: [] };
+      };
+      return { all, bind: () => ({ all }) };
+    }
+  },
+  AI: {
+    run: async (_model, input) => {
+      if (input?.contexts) return { response: input.contexts.map((_item, id) => ({ id, score: 1 - id / 10 })) };
+      if (input?.messages) return { response: {
+        answerable: true,
+        answer_type: "definition",
+        subject_supported: true,
+        reason: "primary_sources_sufficient",
+        points: [{
+          text: "The tree of life signifies the Triune God embodied in Christ as life to man in the form of food.",
+          citations: ["S1", "S2"]
+        }]
+      } };
+      return {};
+    }
+  }
+};
+const treeResult = await answerQuery(treeTestEnv, "What is the spiritual meaning of the tree of life?", "en", {}, false);
+globalThis.fetch = originalFetch;
+assert.equal(treeResult.presentation, "study");
+assert.equal(treeResult.answerable, true);
+assert.match(treeResult.answer_markdown, /signifies the Triune God embodied in Christ as life to man/i);
+assert.equal(treeResult.evidence.some(item => item.source_type === "reference_book"), false);
+assert.equal(treeResult.evidence.some(item => item.source_type === "bible"), true);
+assert.equal(treeResult.evidence.some(item => item.source_type === "footnote"), true);
+assert.equal(treeReferenceSearches, 0);
 
 console.log("worker unit checks passed");
