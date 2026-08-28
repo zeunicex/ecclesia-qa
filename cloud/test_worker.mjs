@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, referenceTextForLocale, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -257,6 +257,15 @@ assert.match(waterWineAnswer.answer, /水象征死亡，酒象征生命/);
 assert.match(waterWineAnswer.answer, /把我们的情形交给主耶稣/);
 assert.match(waterWineAnswer.answer, /向主耶稣敞开/);
 assert.doesNotMatch(waterWineAnswer.answer, /吃祂|喝祂|神的见证|神的見證/);
+const resurrectionCoverage = doctrineCoverage("我们怎么样才能经历复活");
+assert.equal(resurrectionCoverage.id, "experience_resurrection");
+const resurrectionExtractive = doctrineExtractiveAnswer(resurrectionCoverage, resurrectionCoverage.anchors.map((anchor, index) => ({
+  source_id: anchor.source_id,
+  citation_id: `S${index + 1}`
+})), "zh-Hans");
+assert.equal(resurrectionExtractive.answerable, true);
+assert.match(resurrectionExtractive.answer, /留在基督里/);
+assert.match(resurrectionExtractive.answer, /里面复活大能的运行/);
 const trinityCoverage = doctrineCoverage("what do you prove that the three of the godhead are one");
 assert.equal(trinityCoverage.id, "divine_trinity_oneness");
 assert.equal(trinityCoverage.aspects.length, 4);
@@ -408,9 +417,21 @@ assert.equal(d1Evidence[0].source_id, "doc:1");
 assert.equal(d1Evidence[0].score, 2);
 
 assert.equal(normalizeQueryText("how can i receive the impartation of llife"), "how can i receive the impartation of life");
+assert.equal(questionSubject("我们怎么样才能经历复活"), "复活");
+assert.equal(questionSubject("我们怎样才能经历复活"), "复活");
+assert.doesNotMatch(retrievalQuestion("我们怎么样才能经历复活"), /样才能/);
+assert.equal(keywordQuery("我们怎么样才能经历复活"), '"复活"');
 assert.equal(normalizeSourceText("Life requires life but\nalso the life supply.\nTeaching continues."), "Life requires life but also the life supply. Teaching continues.");
 assert.equal(normalizeSourceText("The divine dis-\npensing supplies life."), "The divine dispensing supplies life.");
 assert.equal(precisePassage("iven and healed. If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle. A trailing frag", "how can I impart life", 220), "If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle.");
+assert.equal(precisePassage("第一句。第二句。复活是第三句。第四句。第五句。", "如何经历复活", 1600), "第一句。 第二句。 复活是第三句。 第四句。 第五句。");
+const mixedResurrectionReference = "我们转到我们的灵里，就碰着基督这赐生命的灵，这灵就 to our spirit, we meet Christ as the life-giving Spirit, who is the very reality of Christ’s 是基督复活的实际。乃是借着这灵，我们经历基督的复活。 resurrection.";
+const cleanedResurrectionReference = referenceTextForLocale(mixedResurrectionReference, "zh-Hans", "zh-Hans");
+assert.match(cleanedResurrectionReference, /我们经历基督的复活/);
+assert.doesNotMatch(cleanedResurrectionReference, /life-giving|resurrection/i);
+assert.equal(referenceTextForLocale("Christ is resurrection and life.", "en", "zh-Hans"), "");
+assert.equal(referenceTextForLocale("基督是复活和生命。", "zh-Hans", "en"), "");
+assert.equal(referenceTextForLocale("我们 所看见的，就成为我们里面的 实际。", "zh-Hans", "zh-Hans"), "我们所看见的，就成为我们里面的实际。");
 const embeddedChineseFootnote = "经文：9 耶和华神使各样的树从地里长出来，可以悦人的眼目，也好作食物；园子当中有生命树，还有善恶知识树。\n注2：神达成祂目的之手续的第二步，乃是把受造的人放在生命树跟前。生命树表征三一神具体化身在基督里，以食物的形态作人的生命。神把人摆在生命树跟前，指明神要人藉着生机的吃祂并新陈代谢的吸收祂，接受祂作人的生命，使神能成为人所是的构成成分。";
 const displayedChineseFootnote = footnotePassage(embeddedChineseFootnote, "生命树有什么属灵意义？", 1100);
 assert.doesNotMatch(displayedChineseFootnote, /^经文：/);
@@ -692,6 +713,15 @@ const livingWaterReferenceSupplement = await supplementaryReferenceEvidence({ AI
   text: "圣经如何没有告诉我们如何相信，照样，它也没有告诉我们如何饮生命的水。圣经只有说，我们若渴了，就当到主这里来喝。这一段明确说到饮生命的水。"
 }], "如何喝生命活水", 2);
 assert.equal(livingWaterReferenceSupplement.length, 1);
+const resurrectionReferenceSupplement = await supplementaryReferenceEvidence({ AI: {
+  run: async (_model, input) => ({ response: input.contexts.map((_item, id) => ({ id, score: 1 - id / 10 })) })
+} }, [
+  "我们转到灵里接触基督这赐生命的灵，就经历基督复活的实际。这样的经历使我们在日常生活中凭复活生命而活。",
+  "要经历复活，需要认识基督自己就是复活，并在实际生活中接受祂作生命。这样，复活就不只是道理。",
+  "借着呼求主并操练人的灵，信徒能接触赐生命的灵，经历基督复活生命的供应。这是具体可实行的路。",
+  "复活的经历不是外面的模仿，乃是让基督在我们里面活着，使祂复活的能力从我们身上彰显出来。"
+].map((text, index) => ({ source_id: `doc:resurrection-${index + 1}`, source_type: "reference_book", title: `复活的经历 ${index + 1}`, text })), "如何经历复活", 4);
+assert.equal(resurrectionReferenceSupplement.length, 4);
 
 globalThis.fetch = async url => {
   const href = String(url);
