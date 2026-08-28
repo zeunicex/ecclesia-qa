@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQuery, applyReranker, centralThemeEvidence, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, requestedNote, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -112,6 +112,9 @@ assert.equal(questionSubject("What does the Bible teach about Christ?"), "the Bi
 assert.equal(questionSubject("What is the central thought of the Bible?"), "the Bible");
 assert.equal(questionSubject("What are the contents of the Bible?"), "the Bible");
 assert.equal(questionSubject("What is the Bible's main message?"), "the Bible");
+assert.equal(questionIntent("生命树有什么属灵意义？").type, "significance");
+assert.equal(questionSubject("生命树有什么属灵意义？"), "生命树");
+assert.doesNotMatch(retrievalQuestion("生命树有什么属灵意义？"), /什么属灵/);
 const centralThemeSources = [
   { source_id: "supplementary", text: "中心思想。圣经开始于生命树，也结束于生命树。我们所接受到里面的，就是我们所凭以活着的。" },
   { source_id: "direct", text: "圣经的中心思想。我们来读这本神的话时，应当知道这本书的基本观念，是神渴望将祂自己作到我们里面。" }
@@ -408,6 +411,17 @@ assert.equal(normalizeQueryText("how can i receive the impartation of llife"), "
 assert.equal(normalizeSourceText("Life requires life but\nalso the life supply.\nTeaching continues."), "Life requires life but also the life supply. Teaching continues.");
 assert.equal(normalizeSourceText("The divine dis-\npensing supplies life."), "The divine dispensing supplies life.");
 assert.equal(precisePassage("iven and healed. If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle. A trailing frag", "how can I impart life", 220), "If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle.");
+const embeddedChineseFootnote = "经文：9 耶和华神使各样的树从地里长出来，可以悦人的眼目，也好作食物；园子当中有生命树，还有善恶知识树。\n注2：神达成祂目的之手续的第二步，乃是把受造的人放在生命树跟前。生命树表征三一神具体化身在基督里，以食物的形态作人的生命。神把人摆在生命树跟前，指明神要人藉着生机的吃祂并新陈代谢的吸收祂，接受祂作人的生命，使神能成为人所是的构成成分。";
+const displayedChineseFootnote = footnotePassage(embeddedChineseFootnote, "生命树有什么属灵意义？", 1100);
+assert.doesNotMatch(displayedChineseFootnote, /^经文：/);
+assert.match(displayedChineseFootnote, /生命树表征三一神具体化身在基督里/);
+assert.match(displayedChineseFootnote, /接受祂作人的生命/);
+const sparseRenumbered = renumberPresentedEvidence([
+  { source_id: "verse", citation_id: "S3", source_type: "bible" },
+  { source_id: "note", citation_id: "S5", source_type: "footnote" }
+], "结论。[S5]");
+assert.deepEqual(sparseRenumbered.evidence.map(item => item.citation_id), ["S1", "S2"]);
+assert.equal(sparseRenumbered.answer, "结论。[S2]");
 assert.equal(sourceQuality({ source_type: "reference_book", text: "■ CONTENTS 1. Introduction 2. Four Aspects of the Spirit 3. The Compound Spirit" }, "how can I receive the impartation of life"), 0);
 assert.equal(sourceQuality({ source_type: "reference_book", title: "The Crucified Christ", text: "CONTENTS 1. The Life and the Way 2. God's Eternal Purpose and God's Work" }, "how can I receive the impartation of life"), 0);
 assert.ok(sourceQuality({ source_type: "reference_book", text: "The impartation into us of all the things of life is through the full knowledge of God. This full knowledge is a deep, thorough, experiential knowledge." }, "how can I receive the impartation of llife") > 0);
@@ -554,6 +568,218 @@ assert.match(treeResult.answer_markdown, /signifies the Triune God embodied in C
 assert.equal(treeResult.evidence.some(item => item.source_type === "reference_book"), false);
 assert.equal(treeResult.evidence.some(item => item.source_type === "bible"), true);
 assert.equal(treeResult.evidence.some(item => item.source_type === "footnote"), true);
-assert.equal(treeReferenceSearches, 0);
+assert.equal(treeReferenceSearches, 1);
+
+let treeZhReferenceSearches = 0;
+globalThis.fetch = async url => {
+  const href = String(url);
+  let hits = [];
+  if (href.includes("/namespaces/phase1/search")) {
+    treeZhReferenceSearches += 1;
+    hits = [
+      {
+        _id: "doc:tree-of-life-reference",
+        _score: 0.99,
+        fields: { source_type: "reference_book", title: "生命树", heading_path: "生命树—基督作生命", language: "zh-Hans", chunk_text: "生命树乃是基督作生命给人接受并享受。人接受基督作生命，就在日常生活中凭这生命而活，并让基督在里面成为生命的供应。这样的享受不是外面的知识，乃是里面生命的经历。" }
+      },
+      {
+        _id: "doc:irrelevant-reference",
+        _score: 0.98,
+        fields: { source_type: "reference_book", title: "不相关资料", heading_path: "目录", language: "zh-Hans", chunk_text: "■ 目录 1. 引言 2. 其他题目 3. 附录" }
+      }
+    ];
+  } else if (href.includes("/namespaces/phase2-bible/search")) {
+    hits = [
+      { _id: "prov-hit", _score: 0.99, fields: { book_id: "Prov", chapter: 13, verse_start: 12, verse_end: 12, language: "zh-Hans", source_type: "bible" } },
+      { _id: "cor-hit", _score: 0.98, fields: { book_id: "1Cor", chapter: 15, verse_start: 44, verse_end: 45, language: "zh-Hans", source_type: "bible" } },
+      { _id: "gen-hit", _score: 0.97, fields: { book_id: "Gen", chapter: 2, verse_start: 9, verse_end: 9, language: "zh-Hans", source_type: "bible" } }
+    ];
+  } else if (href.includes("/namespaces/phase2-footnotes/search")) {
+    hits = [
+      {
+        _id: "footnote:rcv-zh-cn:Rev.22.2.5",
+        _score: 0.99,
+        fields: { book_id: "Rev", chapter: 22, verse_start: 2, verse_end: 2, note_no: 5, language: "zh-Hans", source_type: "footnote", heading_path: "启示录 22:2 注5", chunk_text: "生命树的叶子乃为医治万民。" }
+      },
+      {
+        _id: "footnote:rcv-zh-cn:Gen.2.9.2",
+        _score: 0.98,
+        fields: { book_id: "Gen", chapter: 2, verse_start: 9, verse_end: 9, note_no: 2, language: "zh-Hans", source_type: "footnote", heading_path: "创世记 2:9 注2", chunk_text: "生命树表征三一神具体化身在基督里，以食物的形态作人的生命。" }
+      }
+    ];
+  }
+  return new Response(JSON.stringify({ result: { hits } }), { status: 200, headers: { "content-type": "application/json" } });
+};
+const treeZhBibleRows = [
+  [{ book_name: "箴言", chapter: 13, verse: 12, text: "所愿意的临到，乃是生命树。", source_id: "verse:rcv-zh-cn:Prov.13.12" }],
+  [
+    { book_name: "哥林多前书", chapter: 15, verse: 44, text: "若有属魂的身体，也就有属灵的身体。", source_id: "verse:rcv-zh-cn:1Cor.15.44" },
+    { book_name: "哥林多前书", chapter: 15, verse: 45, text: "末后的亚当成了赐生命的灵。", source_id: "verse:rcv-zh-cn:1Cor.15.45" }
+  ],
+  [{ book_name: "创世记", chapter: 2, verse: 9, text: "园子当中有生命树，还有善恶知识树。", source_id: "verse:rcv-zh-cn:Gen.2.9" }]
+];
+const treeZhFootnoteText = "神达成祂目的之手续的第二步，乃是把受造的人放在生命树跟前。生命树表征三一神具体化身在基督里，以食物的形态作人的生命。神把人摆在生命树跟前，指明神要人藉着生机的吃祂并新陈代谢的吸收祂，接受祂作人的生命，使神能成为人所是的构成成分。";
+const treeZhTestEnv = {
+  PINECONE_HOST: "example.pinecone.test",
+  PINECONE_API_KEY: "test-only",
+  PINECONE_NAMESPACE: "phase1",
+  PINECONE_BIBLE_NAMESPACE: "phase2-bible",
+  PINECONE_FOOTNOTE_NAMESPACE: "phase2-footnotes",
+  DB: {
+    batch: async () => treeZhBibleRows.map(results => ({ results })),
+    prepare: sql => {
+      const all = async () => {
+        if (sql.includes("FROM topic_aliases")) return { results: [] };
+        if (sql.includes("FROM search_chunks")) return { results: [{
+          source_id: "footnote:rcv-zh-cn:Gen.2.9.2",
+          source_type: "footnote",
+          reference: "创世记 2:9 注2",
+          language: "zh-Hans",
+          text: treeZhFootnoteText
+        }] };
+        return { results: [] };
+      };
+      return { all, bind: () => ({ all }) };
+    }
+  },
+  AI: {
+    run: async (_model, input) => {
+      if (input?.contexts) return { response: input.contexts.map((_item, id) => ({ id, score: 1 - id / 10 })) };
+      if (input?.messages) return { response: { answerable: false, answer_type: "significance", subject_supported: false, reason: "force_coverage_card", points: [] } };
+      return {};
+    }
+  }
+};
+const treeZhResult = await answerQuery(treeZhTestEnv, "生命树有什么属灵意义？", "zh-Hans", {}, false);
+globalThis.fetch = originalFetch;
+assert.equal(treeZhResult.presentation, "study");
+assert.equal(treeZhResult.answerable, true);
+assert.match(treeZhResult.answer_markdown, /生命树表征三一神具体化身在基督里/);
+assert.match(treeZhResult.answer_markdown, /接受祂作人的生命/);
+assert.deepEqual(treeZhResult.evidence.map(item => item.citation_id), ["S1", "S2", "S3"]);
+assert.deepEqual(treeZhResult.evidence.map(item => item.source_type), ["bible", "footnote", "reference_book"]);
+assert.match(treeZhResult.answer_markdown, /\[S2\]/);
+assert.doesNotMatch(treeZhResult.answer_markdown, /\[S5\]/);
+assert.equal(treeZhResult.evidence.some(item => item.source_id === "footnote:rcv-zh-cn:Gen.2.9.2"), true);
+assert.equal(treeZhResult.evidence.some(item => /Prov|1Cor|Rev\.22/.test(item.source_id)), false);
+assert.match(treeZhResult.evidence.find(item => item.source_type === "footnote").text, /生命树表征三一神具体化身在基督里/);
+assert.match(treeZhResult.evidence.find(item => item.source_type === "reference_book").text, /生命树乃是基督作生命/);
+assert.equal(treeZhResult.evidence.filter(item => item.source_type === "reference_book").length, 1);
+assert.equal(treeZhReferenceSearches, 1);
+
+const spiritClarification = clarificationResult("灵是什么", "zh-Hans");
+assert.equal(spiritClarification.answerable, false);
+assert.equal(spiritClarification.answerability_reason, "clarification_required");
+assert.match(spiritClarification.answer_markdown, /圣灵/);
+assert.match(spiritClarification.answer_markdown, /人的灵/);
+assert.deepEqual(spiritClarification.evidence, []);
+const ambiguousSpiritResult = await answerQuery({}, "灵是什么", "zh-Hans", {}, false);
+assert.equal(ambiguousSpiritResult.answerability_reason, "clarification_required");
+assert.deepEqual(ambiguousSpiritResult.evidence, []);
+assert.equal(requiresPrimaryScripture("如何喝生命活水"), true);
+assert.equal(requiresPrimaryScripture("倪柝声什么时候离开上海"), false);
+assert.equal(answerQualityFailure(
+  "1. 幸一些就要放到主面过说让主说你请是口水的话，绝起放了。 [S1]\n\n2. 我们放流之就放了。 [S1]",
+  "如何喝生命活水",
+  [{ citation_id: "S1", source_type: "reference_book", text: "圣经如何告诉我们如何相信、照样，它也没有告诉我们如何饮生命的水。" }]
+), "malformed_or_unsupported_answer");
+const livingWaterReferenceSupplement = await supplementaryReferenceEvidence({ AI: {
+  run: async (_model, input) => ({ response: input.contexts.map((_item, id) => ({ id, score: 1 - id / 10 })) })
+} }, [{
+  source_id: "doc:living-water-wording",
+  source_type: "reference_book",
+  title: "出埃及记生命读经",
+  text: "圣经如何没有告诉我们如何相信，照样，它也没有告诉我们如何饮生命的水。圣经只有说，我们若渴了，就当到主这里来喝。这一段明确说到饮生命的水。"
+}], "如何喝生命活水", 2);
+assert.equal(livingWaterReferenceSupplement.length, 1);
+
+globalThis.fetch = async url => {
+  const href = String(url);
+  let hits = [];
+  if (href.includes("/namespaces/phase1/search")) {
+    hits = [{
+      _id: "doc:living-water-reference",
+      _score: 0.96,
+      fields: {
+        source_type: "reference_book",
+        title: "喝生命活水",
+        heading_path: "來到主這裏喝",
+        language: "zh-Hans",
+        chunk_text: "喝生命活水就是來到主這裏，並信入主。接受那靈作活水，使裏面生命得著供應；這不是外面的道理，乃是照著主的話來喝、來取並接受生命的水。"
+      }
+    }];
+  } else if (href.includes("/namespaces/phase2-bible/search")) {
+    hits = [
+      { _id: "john-7-37", _score: 0.99, fields: { book_id: "John", chapter: 7, verse_start: 37, verse_end: 39, language: "zh-Hans", source_type: "bible" } },
+      { _id: "rev-22-17", _score: 0.98, fields: { book_id: "Rev", chapter: 22, verse_start: 17, verse_end: 17, language: "zh-Hans", source_type: "bible" } }
+    ];
+  } else if (href.includes("/namespaces/phase2-footnotes/search")) {
+    hits = [{
+      _id: "footnote:rcv-zh-cn:John.7.39.1",
+      _score: 0.99,
+      fields: {
+        book_id: "John", chapter: 7, verse_start: 39, verse_end: 39, note_no: 1,
+        language: "zh-Hans", source_type: "footnote", heading_path: "约翰福音 7:39 注1",
+        chunk_text: "那灵现今乃是包罗万有耶稣基督的灵，作了活水给我们接受。"
+      }
+    }];
+  }
+  return new Response(JSON.stringify({ result: { hits } }), { status: 200, headers: { "content-type": "application/json" } });
+};
+const livingWaterRows = [
+  [
+    { book_name: "约翰福音", chapter: 7, verse: 37, text: "人若渴了，可以到我这里来喝。", source_id: "verse:rcv-zh-cn:John.7.37" },
+    { book_name: "约翰福音", chapter: 7, verse: 38, text: "信入我的人，从他腹中要流出活水的江河来。", source_id: "verse:rcv-zh-cn:John.7.38" },
+    { book_name: "约翰福音", chapter: 7, verse: 39, text: "耶稣这话是指着信入祂的人将要受的那灵说的。", source_id: "verse:rcv-zh-cn:John.7.39" }
+  ],
+  [{ book_name: "启示录", chapter: 22, verse: 17, text: "口渴的人也当来；愿意的都可以白白取生命的水喝。", source_id: "verse:rcv-zh-cn:Rev.22.17" }]
+];
+const livingWaterAnchors = [
+  { source_id: "verse:rcv-zh-cn:John.7.37", source_type: "bible", reference: "约翰福音 7:37", language: "zh-Hans", text: "人若渴了，可以到我这里来喝。" },
+  { source_id: "verse:rcv-zh-cn:John.7.38", source_type: "bible", reference: "约翰福音 7:38", language: "zh-Hans", text: "信入我的人，从他腹中要流出活水的江河来。" },
+  { source_id: "verse:rcv-zh-cn:Rev.22.17", source_type: "bible", reference: "启示录 22:17", language: "zh-Hans", text: "口渴的人也当来；愿意的都可以白白取生命的水喝。" },
+  { source_id: "footnote:rcv-zh-cn:John.7.39.1", source_type: "footnote", reference: "约翰福音 7:39 注1", language: "zh-Hans", text: "那灵现今乃是包罗万有耶稣基督的灵，作了活水给我们接受。" }
+];
+const livingWaterEnv = {
+  PINECONE_HOST: "example.pinecone.test",
+  PINECONE_API_KEY: "test-only",
+  PINECONE_NAMESPACE: "phase1",
+  PINECONE_BIBLE_NAMESPACE: "phase2-bible",
+  PINECONE_FOOTNOTE_NAMESPACE: "phase2-footnotes",
+  DB: {
+    batch: async () => livingWaterRows.map(results => ({ results })),
+    prepare: sql => {
+      const all = async () => sql.includes("FROM search_chunks") ? { results: livingWaterAnchors } : { results: [] };
+      return { all, bind: () => ({ all }) };
+    }
+  },
+  AI: {
+    run: async (_model, input) => {
+      if (input?.contexts) return { response: input.contexts.map((_item, id) => ({ id, score: 1 - id / 20 })) };
+      if (input?.messages) return { response: {
+        answerable: true,
+        answer_type: "means",
+        subject_supported: true,
+        reason: "primary_sources_sufficient",
+        points: [
+          { aspect: "come_and_drink", text: "口渴的人要到主这里来喝，并白白取生命的水。", citations: ["S1", "S3"] },
+          { aspect: "believe_and_receive", text: "喝生命活水就是信入主，并接受那灵作活水。", citations: ["S2", "S4"] }
+        ]
+      } };
+      return {};
+    }
+  }
+};
+const livingWaterResult = await answerQuery(livingWaterEnv, "如何喝生命活水", "zh-Hans", {}, false);
+globalThis.fetch = originalFetch;
+assert.equal(livingWaterResult.answerable, true);
+assert.match(livingWaterResult.answer_markdown, /到主这里来喝/);
+assert.match(livingWaterResult.answer_markdown, /信入主/);
+assert.equal(livingWaterResult.evidence[0].source_type, "bible");
+assert.equal(livingWaterResult.evidence.some(item => item.source_type === "footnote"), true);
+assert.equal(livingWaterResult.evidence.some(item => item.source_type === "reference_book"), true);
+assert.deepEqual(livingWaterResult.evidence.map(item => item.citation_id), livingWaterResult.evidence.map((_item, index) => `S${index + 1}`));
+assert.match(livingWaterResult.evidence.find(item => item.source_type === "reference_book").text, /来到主这里/);
+assert.doesNotMatch(livingWaterResult.evidence.find(item => item.source_type === "reference_book").text, /來到主這裏/);
 
 console.log("worker unit checks passed");
