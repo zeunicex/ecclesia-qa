@@ -82,6 +82,30 @@ const DOCTRINE_CARDS = [{
     { source_id: "footnote:rcv-zh-cn:John.7.39.1", language: "zh-Hans", aspects: ["believe_and_receive"], weight: 4 }
   ]
 }, {
+  id: "experience_resurrection",
+  match: /(?:我们|我|人)?(?:怎么样|怎样|怎么|如何)(?:(?:才)?(?:能|可以))?.{0,8}(?:经历|享受|进入).{0,6}复活|复活.{0,8}(?:如何|怎么|怎样).{0,8}(?:经历|享受|进入)/i,
+  aspects: [
+    { id: "union", description: "Show how union with Christ in His death and resurrection issues in walking in newness of life." },
+    { id: "remain_in_christ", description: "Show the practical way of remaining in Christ as the Spirit in the believer's spirit." },
+    { id: "inward_operation", description: "Show how to cooperate with resurrection power operating inwardly instead of remaining in outward activity." },
+    { id: "open_and_see", description: "Show the need to open to the Lord, see Christ with His death and resurrection, and live by that inward reality." }
+  ],
+  anchors: [
+    { source_id: "verse:rcv-zh-cn:Rom.6.4", language: "zh-Hans", aspects: ["union"], weight: 5 },
+    { source_id: "verse:rcv-zh-cn:Rom.6.5", language: "zh-Hans", aspects: ["union"], weight: 5 },
+    { source_id: "footnote:rcv-zh-cn:Song.4.6.1", language: "zh-Hans", aspects: ["remain_in_christ"], weight: 5 },
+    { source_id: "doc:book-2396:pdf-00054:zh-001", language: "zh-Hans", aspects: ["inward_operation"], weight: 4 },
+    { source_id: "doc:book-2171:pdf-00118:zh-001", language: "zh-Hans", aspects: ["open_and_see"], weight: 4 }
+  ],
+  extracts: {
+    "zh-Hans": [
+      { aspect: "union", source_ids: ["verse:rcv-zh-cn:Rom.6.4", "verse:rcv-zh-cn:Rom.6.5"], text: "经历复活首先不是外面的模仿，乃是借着与基督联合，在祂死的样式里与祂一同生长，也在祂复活的样式里与祂一同生长，因而在生命的新样中生活行动。" },
+      { aspect: "remain_in_christ", source_id: "footnote:rcv-zh-cn:Song.4.6.1", text: "实际的路是留在基督里；祂就是在我们灵里的那灵。我们有基督同在，就在祂的死、复活和升天里，并在这灵里享受基督。" },
+      { aspect: "inward_operation", source_id: "doc:book-2396:pdf-00054:zh-001", text: "还要顾到里面复活大能的运行，亲近主并在里面与主交通，不只凭外面的热心和活动而活。" },
+      { aspect: "open_and_see", source_id: "doc:book-2171:pdf-00118:zh-001", text: "我们需要向主敞开，求祂给我们看见基督并祂死与复活的异象；所看见的成为里面的实际，我们就凭这实际而活。" }
+    ]
+  }
+}, {
   id: "high_peak_divine_revelation",
   match: /(?:神圣启示|神聖啟示).*(?:高峰|最高峰)|(?:高峰|最高峰).*(?:神圣启示|神聖啟示)|(?:high peak).*(?:divine revelation)|(?:divine revelation).*(?:high peak)/i,
   aspects: [
@@ -873,12 +897,13 @@ function keywordQuery(question, broad = false) {
   const terms = [];
   for (const group of simplified.match(/[\u3400-\u9fff]+/g) || []) {
     const cleaned = group
-      .replace(/^(?:请问|什么是|什么叫|为什么|为何|怎么|如何|哪里|哪一|哪些|何处)+/, "")
+      .replace(/^(?:请问)?(?:我们|我|人)?(?:怎么样|怎样|怎么|如何)(?:(?:才)?(?:能|可以))?/, "")
+      .replace(/^(?:请问|什么是|什么叫|为什么|为何|哪里|哪一|哪些|何处)+/, "")
       .replace(/^(?:经历|实行|应用|接受|进入|享受)+/, "")
       .replace(/(?:是什么|是什么意思|指什么|在哪里|在哪里提到|吗|呢)+$/, "");
-    if (cleaned.length >= 3) terms.push(cleaned);
+    if (cleaned.length >= 2) terms.push(cleaned);
     terms.push(...cleaned.split(/(?:什么时候|什么|为什么|为何|怎么|如何|哪里|何处|哪一|哪些|的|是|在|与|和|及)/)
-      .filter(term => term.length >= 3));
+      .filter(term => term.length >= 2));
   }
   const latin = (simplified.match(/[a-z0-9][a-z0-9'-]{2,}/g) || [])
     .filter(term => !/^(?:what|where|which|when|why|how|the|and|does|did|are|was|were|about)$/.test(term));
@@ -997,7 +1022,12 @@ async function d1FallbackLookup(env, question, locale, error, sourceTypes, mode)
   try {
     const queries = await crossLanguageQueries(env, question, locale);
     const batches = await Promise.all(queries.map(query => d1KeywordEvidence(env, query, sourceTypes)));
-    const evidence = uniqueEvidence(batches.flat()).slice(0, 48);
+    const localized = batches.flat().flatMap(item => {
+      if (item.source_type !== "reference_book") return [item];
+      const text = referenceTextForLocale(item.text, item.language, locale);
+      return text ? [{ ...item, text }] : [];
+    });
+    const evidence = uniqueEvidence(localized).slice(0, 48);
     const rerankQuery = [...queries].reverse().find(query => locale === "en" ? /[\u3400-\u9fff]/.test(query) : /[a-z]/i.test(query)) || question;
     return { mode, evidence, rerank_query: rerankQuery, cross_language: queries.length > 1, degraded: true, degradation_reason: error.code };
   } catch {
@@ -1006,21 +1036,58 @@ async function d1FallbackLookup(env, question, locale, error, sourceTypes, mode)
   return unavailable;
 }
 
-async function referenceBookEvidence(env, question) {
-  const hits = await pineconeHits(env, retrievalQuestion(question), env.PINECONE_NAMESPACE, howIntent(question) ? 20 : 12,
+function referenceTextForLocale(value, sourceLanguage, locale) {
+  const text = normalizeSourceText(value).replace(/(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "");
+  if (!text) return "";
+  const han = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  const latin = (text.match(/[A-Za-z]/g) || []).length;
+  if (locale === "en") {
+    if (sourceLanguage && sourceLanguage !== "en") return "";
+    return latin >= 10 && han < Math.max(12, latin * 0.12) ? text : "";
+  }
+  if (sourceLanguage === "en" || han < 4) return "";
+  const latinWords = (text.match(/[A-Za-z][A-Za-z’'-]*/g) || []).length;
+  if (latin < 30 || latinWords < 5) return text;
+  const cleaned = text
+    .replace(/[A-Za-z][A-Za-z0-9’'_.:/-]*/g, " ")
+    .replace(/[\t ,;:!?()\[\]"'’.-]+/g, " ")
+    .replace(/\s+([，。；：！？])/g, "$1")
+    .replace(/([，。；：！？])\s+/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+  const cleanedHan = (cleaned.match(/[\u3400-\u9fff]/g) || []).length;
+  return cleanedHan >= 20 && /[。！？]/.test(cleaned)
+    ? cleaned.replace(/(?<=[\u3400-\u9fff])\s+(?=[\u3400-\u9fff])/g, "")
+    : "";
+}
+
+async function referenceBookEvidence(env, question, locale = "en") {
+  const hits = await pineconeHits(env, retrievalQuestion(question), env.PINECONE_NAMESPACE, locale === "en" ? 40 : 80,
     ["chunk_text", "document_id", "title", "heading_path", "language", "source_type", "page_start", "page_end", "corpus_version"]);
-  return hits.map(hit => ({
-    source_id: hit._id,
-    source_type: hit.fields?.source_type,
-    evidence_role: "reference",
-    score: hit._score,
-    title: hit.fields?.title,
-    reference: hit.fields?.heading_path || hit.fields?.title,
-    pdf_page: hit.fields?.page_start,
-    pdf_page_end: hit.fields?.page_end,
-    language: hit.fields?.language,
-    text: hit.fields?.chunk_text
-  }));
+  const semantic = hits.flatMap(hit => {
+    const text = referenceTextForLocale(hit.fields?.chunk_text, hit.fields?.language, locale);
+    return text ? [{
+      source_id: hit._id,
+      source_type: hit.fields?.source_type,
+      evidence_role: "reference",
+      score: hit._score,
+      title: hit.fields?.title,
+      reference: hit.fields?.heading_path || hit.fields?.title,
+      pdf_page: hit.fields?.page_start,
+      pdf_page_end: hit.fields?.page_end,
+      language: hit.fields?.language,
+      text
+    }] : [];
+  });
+  const relevantSemantic = semantic.filter(item => sourceQuality(item, question) > 0);
+  if (relevantSemantic.length >= 3 || !env.DB) return relevantSemantic;
+  const keyword = (await d1KeywordEvidence(env, question, ["reference_book"])).flatMap(item => {
+    const text = referenceTextForLocale(item.text, item.language, locale);
+    return text ? [{ ...item, evidence_role: "reference", text }] : [];
+  });
+  return uniqueEvidence([...relevantSemantic, ...keyword])
+    .filter(item => sourceQuality(item, question) > 0)
+    .slice(0, 40);
 }
 
 async function footnoteEvidence(env, question, locale = "zh-Hans") {
@@ -1187,11 +1254,18 @@ async function presentationEvidence(env, evidence, result, locale, question = ""
     presentationSeen.add(key);
     return true;
   }));
-  const displayed = selected.map(item => ({
-    ...item,
-    text: (item.source_type === "footnote" ? footnotePassage(item.text, question, 1100) : precisePassage(item.text, question, 1100)) || "",
-    ...(item.translated_text ? { translated_text: precisePassage(item.translated_text, question, 1100) || undefined } : {})
-  })).filter(item => item.text);
+  const displayed = selected.map(item => {
+    const sourceText = item.source_type === "reference_book"
+      ? referenceTextForLocale(item.text, item.language, locale)
+      : item.text;
+    return {
+      ...item,
+      text: (item.source_type === "footnote"
+        ? footnotePassage(sourceText, question, 1100)
+        : precisePassage(sourceText, question, item.source_type === "reference_book" ? 1600 : 1100)) || "",
+      ...(item.translated_text ? { translated_text: precisePassage(item.translated_text, question, item.source_type === "reference_book" ? 1600 : 1100) || undefined } : {})
+    };
+  }).filter(item => item.text);
   if (locale === "zh-Hant") return displayed.map(item => ({
     ...item,
     title: item.title && toTraditional(item.title),
@@ -1200,9 +1274,9 @@ async function presentationEvidence(env, evidence, result, locale, question = ""
   }));
   if (locale === "zh-Hans") return displayed.map(item => ({
     ...item,
-    title: item.title && toSimplified(item.title),
-    reference: item.reference && toSimplified(item.reference),
-    text: item.text && toSimplified(item.text)
+    title: item.title && toSimplified(item.title).replace(/什幺/g, "什么"),
+    reference: item.reference && toSimplified(item.reference).replace(/什幺/g, "什么"),
+    text: item.text && toSimplified(item.text).replace(/什幺/g, "什么")
   }));
   const englishDisplay = displayed.map(item => item.source_type === "footnote" && item.language !== "en" ? {
     ...item,
@@ -1324,7 +1398,7 @@ function questionSubject(question) {
       value = value.replace(/^(?:为什么|为何)(?:说)?\s*/, "").replace(/^(?:什么导致|是什么造成)\s*/, "").replace(/(?:的)?原因是什么$/g, "");
     } else if (type === "means") {
       value = value
-        .replace(/^(?:我们|我|人)?\s*(?:怎么|怎样|如何)(?:能|可以)?\s*/, "")
+        .replace(/^(?:我们|我|人)?\s*(?:怎么样|怎样|怎么|如何)(?:(?:才)?(?:能|可以))?\s*/, "")
         .replace(/^(?:经历|实行|应用|接受|进入|享受)\s*/, "");
     } else if (type === "object") {
       value = value.replace(/(?:的)?(?:究竟|到底)?是?(?:什么|何物)$/g, "");
@@ -1531,7 +1605,7 @@ function precisePassage(value, question, limit = 1000) {
   }).sort((a, b) => b.score - a.score || a.index - b.index);
   const center = ranked[0]?.index || 0;
   const chosen = [];
-  for (let index = Math.max(0, center - 1); index <= Math.min(sentences.length - 1, center + 1); index++) chosen.push(sentences[index]);
+  for (let index = Math.max(0, center - 2); index <= Math.min(sentences.length - 1, center + 2); index++) chosen.push(sentences[index]);
   let excerpt = chosen.join(" ").trim();
   while (excerpt.length > limit && chosen.length > 1) {
     if (center > Math.max(0, center - 1)) chosen.shift();
@@ -1577,7 +1651,9 @@ function sourceQuality(item, question) {
   const numberedItems = (text.match(/(?:^|\s)\d+[.)]\s+/g) || []).length;
   if (/(?:■\s*)?(?:CONTENTS|TABLE OF CONTENTS|目录|目錄)/i.test(text) && numberedItems >= 2) return 0;
   if (/^(?:INTRODUCTION|PREFACE|FOREWORD|目录|目錄|CONTENTS)\b/i.test(text) && text.length < 900) return 0;
-  if (text.length < 60 || sentenceParts(text).filter(sentence => /[。！？.!?][”’"']?$/.test(sentence)).length < 1) return 0;
+  const hanCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  if ((hanCount >= 20 ? hanCount < 30 : text.length < 60)
+    || sentenceParts(text).filter(sentence => /[。！？.!?][”’"']?$/.test(sentence)).length < 1) return 0;
   const terms = searchTerms(question);
   if (terms.length) {
     const words = new Set((combined.toLowerCase().match(/[a-z0-9][a-z0-9'-]{2,}/g) || []).map(searchStem));
@@ -1604,12 +1680,12 @@ function prepareReferenceEvidence(evidence, question, limit = 5) {
   for (const item of evidence || []) {
     const quality = sourceQuality(item, question);
     if (!quality) continue;
-    const text = precisePassage(item.text, question, 1100);
+    const text = precisePassage(item.text, question, 1600);
     if (!text) continue;
     const fingerprint = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "").slice(0, 220);
     if (!fingerprint || seen.has(fingerprint)) continue;
     seen.add(fingerprint);
-    const translatedText = item.translated_text ? precisePassage(item.translated_text, question, 1100) : undefined;
+    const translatedText = item.translated_text ? precisePassage(item.translated_text, question, 1600) : undefined;
     prepared.push({ ...item, text, ...(translatedText ? { translated_text: translatedText } : {}), source_quality: quality });
     if (prepared.length >= limit) break;
   }
@@ -1624,19 +1700,22 @@ function directlyMatchesSubject(item, question) {
     const compact = combined.replace(/\s+/g, "");
     if (/(?:生命活水|生命水|活水)/.test(subject)
       && /(?:(?:喝|饮).{0,10}(?:生命(?:的)?水|活水)|生命泉(?:的)?水)/.test(compact)) return true;
-    return compact.includes(subject);
+    if (compact.includes(subject)) return true;
+    const grams = [];
+    for (let index = 0; index + 2 <= subject.length; index++) grams.push(subject.slice(index, index + 2));
+    return grams.length >= 2 && grams.filter(gram => compact.includes(gram)).length >= Math.ceil(grams.length / 2);
   }
   const terms = searchTerms(questionSubject(question));
   const words = new Set((combined.match(/[a-z0-9][a-z0-9'-]{2,}/g) || []).map(searchStem));
   return terms.length > 0 && terms.filter(term => words.has(term)).length >= Math.min(2, terms.length);
 }
 
-async function supplementaryReferenceEvidence(env, evidence, question, limit = 2) {
+async function supplementaryReferenceEvidence(env, evidence, question, limit = 4) {
   const candidates = filterEvidenceCandidates(evidence, question).filter(item => item.source_type !== "bible"
     && item.source_type !== "footnote" && directlyMatchesSubject(item, question));
   if (!candidates.length) return [];
-  const ranked = await rerankEvidence(env, candidates, question, Math.min(2, limit));
-  return prepareReferenceEvidence(ranked, question, Math.min(2, limit));
+  const ranked = await rerankEvidence(env, candidates, question, Math.min(4, limit));
+  return prepareReferenceEvidence(ranked, question, Math.min(4, limit));
 }
 
 function appendSupplementaryReferences(result, references, locale = "en") {
@@ -2188,7 +2267,7 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     const coverageEvidence = await loadCoverageEvidence();
     let relatedBooks = [];
     try {
-      relatedBooks = await measured(metrics, "reference_context", () => referenceBookEvidence(env, question));
+      relatedBooks = await measured(metrics, "reference_context", () => referenceBookEvidence(env, question, locale));
     } catch (error) {
       const degraded = await measured(metrics, "reference_fallback", () => d1FallbackLookup(env, question, locale, error, ["reference_book"], "reference_keyword_fallback"));
       relatedBooks = degraded?.evidence || [];
@@ -2201,18 +2280,18 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
       verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : 4,
       contextLimit: reference ? 2 : 1,
       footnoteLimit: 2,
-      referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : 3
+      referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : 5
     })));
     return composedAnswerResult(env, expandedBase, question, locale, expandedEvidence, coverage, conversational, metrics);
   }
   let referencePrefetchError = null;
-  const referenceRawPromise = conversational ? Promise.resolve([]) : measured(metrics, "reference_prefetch", () => referenceBookEvidence(env, question))
+  const referenceRawPromise = conversational ? Promise.resolve([]) : measured(metrics, "reference_prefetch", () => referenceBookEvidence(env, question, locale))
     .catch(error => {
       referencePrefetchError = error;
       return [];
     });
   const referenceSupplementPromise = referenceRawPromise
-    .then(evidence => measured(metrics, "reference_supplement", () => supplementaryReferenceEvidence(env, evidence, question, 2)))
+    .then(evidence => measured(metrics, "reference_supplement", () => supplementaryReferenceEvidence(env, evidence, question, 4)))
     .catch(() => []);
   let primarySemantic;
   try { primarySemantic = await measured(metrics, "primary_retrieval", () => primarySemanticLookup(env, question, locale)); }
@@ -2258,12 +2337,12 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     verseLimit: conversational ? 2 : 3,
     contextLimit: 0,
     footnoteLimit: conversational ? 2 : 3,
-    referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : conversational ? 3 : 4
+    referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : conversational ? 3 : 5
   })));
   return composedAnswerResult(env, expandedSemantic, question, locale, expandedEvidence, coverage, conversational, metrics);
 }
 
-export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeQueryText, normalizeSourceText, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureInterpretationIntent, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, directQuestionNeedsSemanticSearch, scriptureContextEvidence, footnotesForReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, sourceQuality, precisePassage, footnotePassage, prepareReferenceEvidence, supplementaryReferenceEvidence, renumberPresentedEvidence, evidenceExcerpt, applyReranker, orderEvidenceLayers, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence, clarificationResult, requiresPrimaryScripture, answerQualityFailure, answerQuery };
+export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeQueryText, normalizeSourceText, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureInterpretationIntent, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, directQuestionNeedsSemanticSearch, scriptureContextEvidence, footnotesForReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, sourceQuality, precisePassage, footnotePassage, prepareReferenceEvidence, referenceTextForLocale, supplementaryReferenceEvidence, renumberPresentedEvidence, evidenceExcerpt, applyReranker, orderEvidenceLayers, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence, clarificationResult, requiresPrimaryScripture, answerQualityFailure, answerQuery };
 
 export default {
   async fetch(request, env, ctx) {
