@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, referenceTextForLocale, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, completeReferenceContinuations, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, referenceNeedsContinuation, referenceTextForLocale, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -425,6 +425,20 @@ assert.equal(normalizeSourceText("Life requires life but\nalso the life supply.\
 assert.equal(normalizeSourceText("The divine dis-\npensing supplies life."), "The divine dispensing supplies life.");
 assert.equal(precisePassage("iven and healed. If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle. A trailing frag", "how can I impart life", 220), "If this brother’s sin is unto death, you should not pray to impart life into him. Instead, you may pray from another angle.");
 assert.equal(precisePassage("第一句。第二句。复活是第三句。第四句。第五句。", "如何经历复活", 1600), "第一句。 第二句。 复活是第三句。 第四句。 第五句。");
+const oldManPassage = "罪根还存在。我们的旧人是活的。主已经把我们的旧人和祂同钉死了。旧人钉死的目的是什么呢？目的是使罪身灭绝。在原文灭绝意即失业。这就是说，罪身没有了旧人，就不会作什么。后面另一个主题开始了。";
+const completeOldManPassage = precisePassage(oldManPassage, "为什么我们的旧人必须死", 1600);
+assert.match(completeOldManPassage, /旧人钉死的目的是什么呢？ 目的是使罪身灭绝。 在原文灭绝意即失业。/);
+assert.doesNotMatch(completeOldManPassage, /？$/);
+assert.equal(referenceNeedsContinuation("旧人钉死的目的是什么呢？"), true);
+assert.equal(referenceNeedsContinuation("目的是使罪身灭绝。"), false);
+const continuationRows = {
+  "doc:book-1:pdf-00012:zh-001": { source_id: "doc:book-1:pdf-00012:zh-001", source_type: "reference_book", pdf_page: 12, pdf_page_end: 12, language: "zh-Hans", text: "答案从下一页开始。这里给出完整的说明。" }
+};
+const continuedReferences = await completeReferenceContinuations({ DB: { prepare: () => ({ bind: (...ids) => ({ all: async () => ({ results: ids.flatMap(id => continuationRows[id] ? [continuationRows[id]] : []) }) }) }) } }, [{
+  source_id: "doc:book-1:pdf-00011:zh-001", source_type: "reference_book", pdf_page: 11, pdf_page_end: 11, language: "zh-Hans", text: "为什么需要这样作呢？"
+}], "zh-Hans");
+assert.match(continuedReferences[0].text, /为什么需要这样作呢？\n答案从下一页开始。/);
+assert.equal(continuedReferences[0].pdf_page_end, 12);
 const mixedResurrectionReference = "我们转到我们的灵里，就碰着基督这赐生命的灵，这灵就 to our spirit, we meet Christ as the life-giving Spirit, who is the very reality of Christ’s 是基督复活的实际。乃是借着这灵，我们经历基督的复活。 resurrection.";
 const cleanedResurrectionReference = referenceTextForLocale(mixedResurrectionReference, "zh-Hans", "zh-Hans");
 assert.match(cleanedResurrectionReference, /我们经历基督的复活/);
