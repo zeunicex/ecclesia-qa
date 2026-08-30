@@ -509,8 +509,11 @@ function conversationDependent(question) {
   const value = String(question || "").trim();
   if (!value || directReference(value)) return false;
   const chinese = /^(?:那|那么|那麼|这|這|这个|這個|这些|這些|它|祂|他们|他們|所以|上面|前面|刚才|剛才|你刚才|你剛才|你前面|我问的是|我問的是|我说的是|我說的是|还有|還有|再说|再說|第二|第三|为什么|為什麼|怎么|怎麼|有什么|有什麼|哪些|哪一|难道|難道|莫非|是不是|是否|不是说|不是說|可不可以说|可不可以說|从.+面|從.+面)/.test(value)
-    || /(?:这个|這個|这点|這點|上述|前者|后者|後者|祂们|祂們)(?:[\u3400-\u9fff]{0,8})?(?:呢|吗|嗎|是|有|为|為|在哪|哪裡|哪里|怎|怎么|怎麼)/.test(value);
+    || /(?:这个|這個|这点|這點|上述|前者|后者|後者|祂们|祂們)(?:[\u3400-\u9fff]{0,8})?(?:呢|吗|嗎|是|有|为|為|在哪|哪裡|哪里|怎|怎么|怎麼)/.test(value)
+    || /答案.{0,8}(?:应当|應當|应该|應該|就在|是在|位于|位於)/.test(value);
   const english = /^(?:and|but|then|so|what about|why|how|which|where|does that|is that|isn't|aren't|wasn't|weren't|don't you mean|can you|could you|any other|what verses|explain more|tell me more)\b/i.test(value)
+    || /^(?:find|show|give|locate)\s+(?:me\s+)?(?:the|that|those)?\s*(?:verse|passage|scripture)\b/i.test(value)
+    || /\b(?:the\s+)?answer\s+(?:should|must|would)\s+be\s+in\b/i.test(value)
     || /\b(?:this|that|it|they|them|those|the former|the latter)\b/i.test(value);
   return chinese || (value.length <= 100 && english);
 }
@@ -616,7 +619,7 @@ async function resolveConversationQuestion(env, question, locale, history) {
 }
 
 function scriptureLocationIntent(question) {
-  return /(圣经|聖經|经文|經文|经节|經節).*(哪里|哪裡|何处|何處|在哪|哪一|哪些)|(哪里|哪裡|何处|何處|在哪|哪一|哪些).*(圣经|聖經|经文|經文|经节|經節)|\b(where|which passage|which verse|what passage)\b.*\b(bible|scripture|new testament|old testament)\b|\b(bible|scripture)\b.*\b(where|which|passage|verse)\b/i.test(question);
+  return /(圣经|聖經|经文|經文|经节|經節).*(哪里|哪裡|何处|何處|在哪|哪一|哪些)|(哪里|哪裡|何处|何處|在哪|哪一|哪些).*(圣经|聖經|经文|經文|经节|經節)|(?:找|查|给|給|显示|顯示).{0,20}(?:经文|經文|经节|經節)|\b(?:which|what)\s+verse\b|\b(where|which passage|which verse|what passage)\b.*\b(bible|scripture|new testament|old testament)\b|\b(bible|scripture)\b.*\b(where|which|passage|verse)\b|\b(?:find|show|give|locate)\b.*\b(?:verse|passage|scripture)\b/i.test(question);
 }
 
 function scriptureQuoteIntent(question) {
@@ -699,6 +702,22 @@ function directReference(question) {
   return match ? { book: match[1], chapter: +match[2], start: +match[3], end: +(match[4] || match[3]), note: requestedNote(question) } : null;
 }
 
+function chapterReference(question) {
+  if (directReference(question)) return null;
+  for (const [name, book] of Object.entries(BOOKS).sort((a, b) => b[0].length - a[0].length)) {
+    const chinese = String(question || "").match(new RegExp(`${name}\\s*([〇零一二两兩三四五六七八九十百\\d]+)\\s*章`, "i"));
+    if (chinese) {
+      const chapter = parseNumber(chinese[1]);
+      if (Number.isFinite(chapter) && chapter > 0) return { book, chapter };
+    }
+    const english = String(question || "").match(new RegExp(`${name}\\s+chapter\\s+(\\d+)\\b`, "i"));
+    if (english && +english[1] > 0) return { book, chapter: +english[1] };
+    const compactEnglish = String(question || "").match(new RegExp(`${name}\\s+(\\d+)\\b(?!\\s*[:.])`, "i"));
+    if (compactEnglish && scriptureLocationIntent(question) && +compactEnglish[1] > 0) return { book, chapter: +compactEnglish[1] };
+  }
+  return null;
+}
+
 function directQuestionNeedsSemanticSearch(question) {
   if (!directReference(question)) return false;
   return scriptureQuoteIntent(question)
@@ -744,6 +763,24 @@ async function scriptureContextEvidence(env, reference, locale) {
     text: row.text
   }));
   return uniqueEvidence([...requested, ...context]);
+}
+
+async function scriptureChapterEvidence(env, reference, locale) {
+  const language = locale === "en" ? "en" : "zh-Hans";
+  const result = await env.DB.prepare(`SELECT book_name,chapter,verse,text,source_id FROM bible_verses
+    WHERE book_id=? AND chapter=? AND language=? ORDER BY verse`)
+    .bind(reference.book, reference.chapter, language).all();
+  return result.results.map(row => ({
+    source_id: row.source_id,
+    source_type: "bible",
+    evidence_role: "scripture",
+    book_id: reference.book,
+    chapter: row.chapter,
+    verse_start: row.verse,
+    verse_end: row.verse,
+    reference: `${row.book_name} ${row.chapter}:${row.verse}`,
+    text: row.text
+  }));
 }
 
 async function footnotesForReference(env, reference, locale) {
@@ -2276,7 +2313,7 @@ async function composedAnswerResult(env, base, question, locale, evidence, cover
 async function answerQuery(env, question, locale, metrics = {}, conversational = false) {
   const clarification = clarificationResult(question, locale);
   if (clarification) return clarification;
-  const exact = directQuestionNeedsSemanticSearch(question) || scriptureInterpretationIntent(question)
+  const exact = directQuestionNeedsSemanticSearch(question) || scriptureInterpretationIntent(question) || chapterReference(question)
     ? null
     : await measured(metrics, "exact", () => exactLookup(env, question, locale));
   if (exact?.mode === "direct_scripture") {
@@ -2304,7 +2341,8 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     }
     return coverageEvidencePromise;
   };
-  if (directReference(question) || scriptureLocationIntent(question) || scriptureQuoteIntent(question)) {
+  const scopedChapter = chapterReference(question);
+  if (directReference(question) || scopedChapter || scriptureLocationIntent(question) || scriptureQuoteIntent(question)) {
     const reference = directReference(question);
     let scripture;
     let exactNotes = [];
@@ -2315,6 +2353,11 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
       ]);
       scripture = { mode: "scripture_context_retrieval", evidence: contextEvidence };
       exactNotes = notes;
+    } else if (scopedChapter) {
+      scripture = {
+        mode: "scripture_chapter_retrieval",
+        evidence: await measured(metrics, "scripture_chapter", () => scriptureChapterEvidence(env, scopedChapter, locale))
+      };
     } else {
       try { scripture = await measured(metrics, "retrieval", () => scriptureSemanticLookup(env, question, locale)); }
       catch (error) {
@@ -2338,7 +2381,7 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     };
     const primaryCandidates = filterEvidenceCandidates(primaryBase.evidence, question);
     const primaryEvidence = labelEvidence(await measured(metrics, "rerank_primary", () => layeredEvidence(env, primaryCandidates, scripture.rerank_query || question, {
-      verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : 4,
+      verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : scopedChapter ? 5 : 4,
       contextLimit: reference ? 2 : 1,
       footnoteLimit: 2,
       referenceLimit: 0
@@ -2361,7 +2404,7 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
     const expandedBase = { ...primaryBase, ...(coverage ? { coverage_card: coverage.id } : {}), evidence: expandedRaw };
     const expandedCandidates = filterEvidenceCandidates(expandedRaw, question);
     const expandedEvidence = labelEvidence(await measured(metrics, "rerank_expanded", () => layeredEvidence(env, expandedCandidates, scripture.rerank_query || question, {
-      verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : 4,
+      verseLimit: reference ? Math.max(2, reference.end - reference.start + 1) : scopedChapter ? 5 : 4,
       contextLimit: reference ? 2 : 1,
       footnoteLimit: 2,
       referenceLimit: coverage ? Math.max(3, new Set(coverageEvidence.map(item => item.source_id)).size) : 5
@@ -2426,7 +2469,7 @@ async function answerQuery(env, question, locale, metrics = {}, conversational =
   return composedAnswerResult(env, expandedSemantic, question, locale, expandedEvidence, coverage, conversational, metrics);
 }
 
-export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeQueryText, normalizeSourceText, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureInterpretationIntent, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, directQuestionNeedsSemanticSearch, scriptureContextEvidence, footnotesForReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, sourceQuality, precisePassage, footnotePassage, prepareReferenceEvidence, referenceTextForLocale, referenceNeedsContinuation, completeReferenceContinuations, supplementaryReferenceEvidence, renumberPresentedEvidence, evidenceExcerpt, applyReranker, orderEvidenceLayers, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence, clarificationResult, requiresPrimaryScripture, answerQualityFailure, answerQuery };
+export { UI_TEXT, HTML, ADMIN_HTML, normalizeLocale, normalizeQueryText, normalizeSourceText, normalizeHistory, conversationDependent, fallbackConversationQuestion, resolveConversationQuestion, questionFacets, questionIntent, questionSubject, answerFocusInstruction, conversationalAnswer, validVisitorId, writeQueryLog, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureInterpretationIntent, englishScriptureSubject, scriptureSearchQuery, parseNumber, requestedNote, directReference, chapterReference, directQuestionNeedsSemanticSearch, scriptureContextEvidence, scriptureChapterEvidence, footnotesForReference, exactLookup, pineconeFailure, temporarySemanticResult, retrievalFailureResult, keywordQuery, retrievalQuestion, englishWholeWordMatch, d1KeywordEvidence, crossLanguageQueries, presentationEvidence, lexicalRerank, whyIntent, howIntent, importanceIntent, modelForQuestion, centralThemeEvidence, sourceQuality, precisePassage, footnotePassage, prepareReferenceEvidence, referenceTextForLocale, referenceNeedsContinuation, completeReferenceContinuations, supplementaryReferenceEvidence, renumberPresentedEvidence, evidenceExcerpt, applyReranker, orderEvidenceLayers, structuredResult, validateAnswer, deterministicAnswer, structuredAnswer, localizeAnswer, localizeGeneratedAnswer, doctrineCoverage, doctrineAnchorEvidence, doctrineExtractiveAnswer, rerankEvidence, clarificationResult, requiresPrimaryScripture, answerQualityFailure, answerQuery };
 
 export default {
   async fetch(request, env, ctx) {
