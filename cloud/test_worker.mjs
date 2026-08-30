@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, clarificationResult, completeReferenceContinuations, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, referenceNeedsContinuation, referenceTextForLocale, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
+import { ADMIN_HTML, HTML, UI_TEXT, answerFocusInstruction, answerQualityFailure, answerQuery, applyReranker, centralThemeEvidence, chapterReference, clarificationResult, completeReferenceContinuations, conversationDependent, conversationalAnswer, crossLanguageQueries, d1KeywordEvidence, deterministicAnswer, directQuestionNeedsSemanticSearch, directReference, doctrineAnchorEvidence, doctrineCoverage, doctrineExtractiveAnswer, englishScriptureSubject, englishWholeWordMatch, evidenceExcerpt, exactLookup, fallbackConversationQuestion, footnotePassage, footnotesForReference, howIntent, importanceIntent, keywordQuery, lexicalRerank, localizeAnswer, localizeGeneratedAnswer, modelForQuestion, normalizeHistory, normalizeLocale, normalizeQueryText, normalizeSourceText, orderEvidenceLayers, parseNumber, pineconeFailure, precisePassage, prepareReferenceEvidence, presentationEvidence, questionFacets, questionIntent, questionSubject, referenceNeedsContinuation, referenceTextForLocale, renumberPresentedEvidence, requestedNote, requiresPrimaryScripture, rerankEvidence, resolveConversationQuestion, retrievalFailureResult, retrievalQuestion, scriptureChapterEvidence, scriptureContextEvidence, scriptureInterpretationIntent, scriptureLocationIntent, scriptureQuoteIntent, scriptureQuoteText, scriptureSearchQuery, sourceQuality, structuredAnswer, structuredResult, supplementaryReferenceEvidence, temporarySemanticResult, validVisitorId, validateAnswer, whyIntent, writeQueryLog } from "./src/index.js";
 
 assert.equal(normalizeLocale("zh-Hant"), "zh-Hant");
 assert.equal(normalizeLocale("unknown"), "zh-Hans");
@@ -44,12 +44,19 @@ assert.equal(conversationDependent("Isn't it God's eternal economy?"), true);
 assert.equal(conversationDependent("What verses prove this?"), true);
 assert.equal(conversationDependent("What is the Divine Trinity?"), false);
 assert.equal(conversationDependent("Ephesians 4:20, footnote 1"), false);
+assert.equal(conversationDependent("Find the verse in Ephesians chapter 4"), true);
+assert.equal(conversationDependent("I will tell you that the answer should be in Ephesians chapter 4"), true);
 assert.equal(conversationDependent("我问的是你刚才说的：‘人被造，有接受神并喝祂这活水的性能’这个性能"), true);
 assert.equal(conversationDependent("所以这个性能在哪里？我怎么知道我有？"), true);
 const conversationHistory = [{ role: "user", content: "什么是神圣三一？" }, { role: "assistant", content: "父、子、灵。" }];
 assert.equal(fallbackConversationQuestion("那有什么经文证明？", conversationHistory, "zh-Hans"), "关于“什么是神圣三一？”，那有什么经文证明？");
 const peakConversationHistory = [{ role: "user", content: "什么是神圣启示的最高峰" }, { role: "assistant", content: "错误旧回答。" }];
 assert.equal(fallbackConversationQuestion("难道不是神永远的经纶吗？", peakConversationHistory, "zh-Hans"), "关于“什么是神圣启示的最高峰”，难道不是神永远的经纶吗？");
+const shepherdingHistory = [{ role: "user", content: "In which verse of the Bible that shows that shepherding leads to the building up" }];
+const scopedShepherdingQuestion = "Regarding “In which verse of the Bible that shows that shepherding leads to the building up”, I will tell you that the answer should be in Ephesians chapter 4";
+assert.equal(fallbackConversationQuestion("I will tell you that the answer should be in Ephesians chapter 4", shepherdingHistory, "en"), scopedShepherdingQuestion);
+assert.equal(fallbackConversationQuestion("Find the verse in Ephesians chapter 4", shepherdingHistory, "en"), "Regarding “In which verse of the Bible that shows that shepherding leads to the building up”, Find the verse in Ephesians chapter 4");
+assert.match(fallbackConversationQuestion("Find the verse in Ephesians chapter 4", [{ role: "user", content: "I will tell you that the answer should be in Ephesians chapter 4", resolved_question: scopedShepherdingQuestion }], "en"), /shepherding leads to the building up/);
 assert.equal(await resolveConversationQuestion({ AI: { run: async () => ({ response: "哪些经文证明父、子、灵是神圣三一？" }) } }, "那有什么经文证明？", "zh-Hans", conversationHistory), "哪些经文证明父、子、灵是神圣三一？");
 const capacityHistory = [
   { role: "user", content: "什么叫吃喝神，怎么吃喝神？", resolved_question: "什么叫吃喝神，怎么吃喝神？" },
@@ -205,6 +212,8 @@ assert.match(structuredAnswer({ response: "unstructured [S1]" }, 2, "en"), /not 
 assert.equal(localizeAnswer("神圣三一与圣灵", "zh-Hant"), "神聖三一與聖靈");
 assert.equal(scriptureLocationIntent("圣经哪里讲到以弗所召会"), true);
 assert.equal(scriptureLocationIntent("Where in the Bible is the church in Ephesus mentioned?"), true);
+assert.equal(scriptureLocationIntent("Find the verse in Ephesians chapter 4"), true);
+assert.equal(scriptureLocationIntent("请在以弗所书四章找出这节经文"), true);
 assert.equal(scriptureLocationIntent("为什么只有一个新人"), false);
 assert.equal(scriptureQuoteIntent("是谁说的来吧我们归向耶和华 为什么"), true);
 assert.equal(scriptureQuoteIntent("Who said ‘Come and let us return to Jehovah,’ and why?"), true);
@@ -361,6 +370,32 @@ assert.deepEqual(directReference("約翰福音一章一節的第一個註解說�
 assert.deepEqual(directReference("马太福音28:19"), { book: "Matt", chapter: 28, start: 19, end: 19, note: null });
 assert.deepEqual(directReference("Hosea 6:1–2"), { book: "Hos", chapter: 6, start: 1, end: 2, note: null });
 assert.deepEqual(directReference("Ephesians 4:20, footnote 1"), { book: "Eph", chapter: 4, start: 20, end: 20, note: 1 });
+assert.deepEqual(chapterReference("Find the verse in Ephesians chapter 4"), { book: "Eph", chapter: 4 });
+assert.deepEqual(chapterReference("Which verse in Ephesians 4 shows shepherding and building up?"), { book: "Eph", chapter: 4 });
+assert.deepEqual(chapterReference("请在以弗所书四章找出这节经文"), { book: "Eph", chapter: 4 });
+assert.equal(chapterReference("Ephesians 4:20, footnote 1"), null);
+const chapterBinds = [];
+const ephesiansChapter = await scriptureChapterEvidence({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
+  chapterBinds.push({ sql, values });
+  return { results: [
+    { book_name: "Ephesians", chapter: 4, verse: 11, text: "And some as shepherds and teachers", source_id: "bible:rcv-en:Eph.4.11" },
+    { book_name: "Ephesians", chapter: 4, verse: 12, text: "Unto the building up of the Body of Christ", source_id: "bible:rcv-en:Eph.4.12" }
+  ] };
+} }) }) } }, { book: "Eph", chapter: 4 }, "en");
+assert.deepEqual(chapterBinds[0].values, ["Eph", 4, "en"]);
+assert.deepEqual(ephesiansChapter.map(item => item.reference), ["Ephesians 4:11", "Ephesians 4:12"]);
+assert.ok(ephesiansChapter.every(item => item.evidence_role === "scripture"));
+const chapterRows = Array.from({ length: 16 }, (_, index) => ({
+  book_name: "Ephesians", chapter: 4, verse: index + 1,
+  text: index === 10 ? "And some as shepherds and teachers" : index === 11 ? "Unto the building up of the Body of Christ" : index === 15 ? "The building up of itself in love" : `Ephesians chapter four verse ${index + 1}`,
+  source_id: `bible:rcv-en:Eph.4.${index + 1}`
+}));
+const scopedChapterResult = await answerQuery({
+  DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: chapterRows }) }) }) },
+  AI: { run: async () => ({ response: [{ id: 10, score: 0.99 }, { id: 11, score: 0.98 }, { id: 15, score: 0.9 }] }) }
+}, "Regarding shepherding that leads to the building up, find the verse in Ephesians chapter 4", "en", {}, false);
+assert.equal(scopedChapterResult.mode, "scripture_chapter_retrieval");
+assert.deepEqual(scopedChapterResult.evidence.slice(0, 2).map(item => item.reference), ["Ephesians 4:11", "Ephesians 4:12"]);
 const exactBinds = [];
 const exactEnglish = await exactLookup({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
   exactBinds.push({ sql, values });
