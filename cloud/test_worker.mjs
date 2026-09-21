@@ -53,7 +53,23 @@ assert.equal(fallbackConversationQuestion("那有什么经文证明？", convers
 const peakConversationHistory = [{ role: "user", content: "什么是神圣启示的最高峰" }, { role: "assistant", content: "错误旧回答。" }];
 assert.equal(fallbackConversationQuestion("难道不是神永远的经纶吗？", peakConversationHistory, "zh-Hans"), "关于“什么是神圣启示的最高峰”，难道不是神永远的经纶吗？");
 const shepherdingHistory = [{ role: "user", content: "In which verse of the Bible that shows that shepherding leads to the building up" }];
+for (const followup of ["another answer?", "Reference?", "Reference to the answer", "Have reference?", "no find in Ephesians"]) {
+  assert.equal(conversationDependent(followup), true);
+  const resolved = await resolveConversationQuestion({ AI: { run: () => { throw new Error("short follow-ups must not require an AI rewrite"); } } }, followup, "en", shepherdingHistory);
+  assert.match(resolved, /shepherding leads to the building up/);
+  assert.ok(resolved.endsWith(followup));
+}
+const damagedHistory = [...shepherdingHistory, { role: "assistant", content: "An unrelated answer." }, { role: "user", content: "another answer?", resolved_question: "another answer?" }];
+assert.match(fallbackConversationQuestion("no find in Ephesians", damagedHistory, "en"), /shepherding leads to the building up/);
 const scopedShepherdingQuestion = "Regarding “In which verse of the Bible that shows that shepherding leads to the building up”, I will tell you that the answer should be in Ephesians chapter 4";
+const stableFollowup = fallbackConversationQuestion("another answer?", [{ role: "user", content: "Find it in Ephesians", resolved_question: scopedShepherdingQuestion }], "en");
+assert.equal(stableFollowup, `${scopedShepherdingQuestion}; another answer?`);
+assert.equal((stableFollowup.match(/Regarding/g) || []).length, 1);
+assert.deepEqual(chapterReference(stableFollowup), { book: "Eph", chapter: 4 });
+assert.match(questionSubject(stableFollowup), /shepherding leads to the building up/);
+const repairedNested = fallbackConversationQuestion("another answer?", [{ role: "user", content: "another answer?", resolved_question: `Regarding “${scopedShepherdingQuestion}”, another answer?` }], "en");
+assert.equal((repairedNested.match(/Regarding/g) || []).length, 1);
+assert.deepEqual(chapterReference(repairedNested), { book: "Eph", chapter: 4 });
 assert.equal(fallbackConversationQuestion("I will tell you that the answer should be in Ephesians chapter 4", shepherdingHistory, "en"), scopedShepherdingQuestion);
 assert.equal(fallbackConversationQuestion("Find the verse in Ephesians chapter 4", shepherdingHistory, "en"), "Regarding “In which verse of the Bible that shows that shepherding leads to the building up”, Find the verse in Ephesians chapter 4");
 assert.match(fallbackConversationQuestion("Find the verse in Ephesians chapter 4", [{ role: "user", content: "I will tell you that the answer should be in Ephesians chapter 4", resolved_question: scopedShepherdingQuestion }], "en"), /shepherding leads to the building up/);
@@ -364,6 +380,12 @@ assert.equal(structuredResult({ response: { answerable: true, answer_type: "mean
   { text: "把这个死亡的情形交给主耶稣，并向祂敞开。", citations: ["S1"] }
 ] } }, 1, "zh-Hans", Infinity, 1, [], true, "means", true).answerable, true);
 assert.equal(parseNumber("二十八"), 28);
+const attributionEvidence = [{ citation_id: "S1", source_type: "footnote", reference: "John 21:16, footnote 1", text: "Shepherding is related to God's building." }];
+const attributionResult = basis => structuredResult({ response: { answerable: true, points: [{ text: "Shepherding is related to God's building.", basis, citations: ["S1"] }] } }, 1, "en", Infinity, 1, [], true, "", false, null, attributionEvidence);
+assert.equal(attributionResult("scripture").reason, "unsupported_source_attribution");
+assert.equal(attributionResult(undefined).reason, "unsupported_source_attribution");
+assert.match(attributionResult("commentary").answer, /^According to John 21:16, footnote 1:/);
+assert.match(attributionResult("inference").answer, /^Contextual inference, not an explicit statement/);
 assert.equal(parseNumber("一百一十九"), 119);
 assert.equal(requestedNote("第一個註解"), 1);
 assert.deepEqual(directReference("約翰福音一章一節的第一個註解說什麼？"), { book: "John", chapter: 1, start: 1, end: 1, note: 1 });
@@ -374,6 +396,61 @@ assert.deepEqual(chapterReference("Find the verse in Ephesians chapter 4"), { bo
 assert.deepEqual(chapterReference("Which verse in Ephesians 4 shows shepherding and building up?"), { book: "Eph", chapter: 4 });
 assert.deepEqual(chapterReference("请在以弗所书四章找出这节经文"), { book: "Eph", chapter: 4 });
 assert.equal(chapterReference("Ephesians 4:20, footnote 1"), null);
+assert.deepEqual(directReference("以弗所书四章十一至十二节"), { book: "Eph", chapter: 4, start: 11, end: 12, note: null });
+assert.deepEqual(directReference("以弗所書第四章第十一節到第十二節"), { book: "Eph", chapter: 4, start: 11, end: 12, note: null });
+assert.deepEqual(directReference("ephesians 4:11–12"), { book: "Eph", chapter: 4, start: 11, end: 12, note: null });
+const saltQuestion = "Why does being poor in spirit and pure in heart make us salt and light? Does Matthew 5 state a direct causal relation?";
+assert.deepEqual(chapterReference(saltQuestion), { book: "Matt", chapter: 5 });
+assert.equal(scriptureInterpretationIntent(saltQuestion), true);
+assert.deepEqual(chapterReference('Regarding “Find a verse in John chapter 21”, no, find the verse in Ephesians chapter 4'), { book: "Eph", chapter: 4 });
+assert.equal(prepareReferenceEvidence([{ source_id: "verse:test", source_type: "bible", evidence_role: "verse", text: "And some as shepherds and teachers," }], "Ephesians 4:11", 5)[0].text, "And some as shepherds and teachers,");
+const lateVerses = Array.from({ length: 48 }, (_, i) => ({ source_id: `verse:${i}`, source_type: "bible", retrieval_scope: true, text: i === 44 ? "He opened their mind to understand the Scriptures." : "Other passage.", reference: `Luke 24:${i + 1}` }));
+let rankedContextCount = 0;
+const lateResult = await rerankEvidence({ AI: { run: async (_model, input) => {
+  rankedContextCount = input.contexts.length;
+  return { response: [{ id: input.contexts.findIndex(item => item.text.includes("opened their mind")), score: 0.99 }] };
+} } }, lateVerses, "Where in Luke 24 did He open their mind to understand Scripture?", 1);
+assert.equal(rankedContextCount, 48);
+assert.equal(lateResult[0].reference, "Luke 24:45");
+const relationVerses = [
+  [7, "But to each one of us grace was given according to the measure of the gift of Christ."],
+  [11, "And He Himself gave some as apostles and some as prophets and some as evangelists and some as shepherds and teachers,"],
+  [12, "For the perfecting of the saints unto the work of the ministry, unto the building up of the Body of Christ,"],
+  [16, "Out from whom all the Body causes the growth of the Body unto the building up of itself in love."],
+  [21, "If indeed you have heard Him and have been taught in Him as the reality is in Jesus,"],
+  [29, "Let no corrupt word proceed out of your mouth, but only that which is good for building up."]
+].map(([verse, text]) => ({ source_id: `verse:Eph.4.${verse}`, source_type: "bible", retrieval_scope: true, book_id: "Eph", chapter: 4, verse_start: verse, reference: `Ephesians 4:${verse}`, text }));
+const adverseReranker = { AI: { run: async (_model, input) => ({ response: [16, 7, 12, 21, 29].map((verse, i) => ({ id: input.contexts.findIndex(item => item.text.startsWith(`Ephesians 4:${verse}\n`)), score: 1 - i / 10 })) }) } };
+const relationSelection = await rerankEvidence(adverseReranker, relationVerses, "Find the verse in Ephesians chapter 4 showing that shepherding leads to the building up of the Body of Christ", 5);
+assert.ok(relationSelection.some(item => item.verse_start === 11), "role verse must survive a reranker favoring only the purpose");
+assert.ok(relationSelection.some(item => item.verse_start === 12));
+const matthewVerses = [
+  [3, "Blessed are the poor in spirit, for theirs is the kingdom of the heavens."],
+  [8, "Blessed are the pure in heart, for they shall see God."],
+  [13, "You are the salt of the earth."], [14, "You are the light of the world."],
+  [19, "Whoever annuls one of these commandments shall be called least in the kingdom."],
+  [28, "Everyone who looks at a woman has committed adultery in his heart."],
+  [33, "You shall not break an oath."],
+  [36, "Neither shall you swear by your head, because you cannot make one hair white or black."]
+].map(([verse, text]) => ({ source_id: `verse:Matt.5.${verse}`, source_type: "bible", retrieval_scope: true, reference: `Matthew 5:${verse}`, text }));
+const saltSelection = await rerankEvidence({ AI: { run: async (_model, input) => ({ response: [3, 8, 19, 28, 33].map((verse, i) => ({ id: input.contexts.findIndex(item => item.text.startsWith(`Matthew 5:${verse}\n`)), score: 1 - i / 10 })) }) } }, matthewVerses, saltQuestion, 5);
+for (const verse of [3, 8, 13, 14]) assert.ok(saltSelection.some(item => item.reference === `Matthew 5:${verse}`));
+const realSetTimeout = globalThis.setTimeout;
+try {
+  globalThis.setTimeout = (callback, _delay, ...args) => realSetTimeout(callback, 1, ...args);
+  const timedOutRanking = await rerankEvidence({ AI: { run: () => new Promise(() => {}) } }, relationVerses, "shepherding and building up the Body of Christ", 5);
+  assert.ok(timedOutRanking.some(item => item.verse_start === 11));
+} finally {
+  globalThis.setTimeout = realSetTimeout;
+}
+const bookScopeQueries = [];
+const scopedBookResult = await answerQuery({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
+  bookScopeQueries.push({ sql, values });
+  return { results: sql.includes("FROM bible_verses") ? [{ source_id: "verse:Eph.4.12", book_name: "Ephesians", chapter: 4, verse: 12, text: "Unto the building up of the Body of Christ," }] : [] };
+} }) }) } }, fallbackConversationQuestion("no find in Ephesians", damagedHistory, "en"), "en");
+assert.equal(scopedBookResult.mode, "scripture_book_retrieval");
+assert.deepEqual(bookScopeQueries.find(item => item.sql.includes("FROM bible_verses")).values, ["Eph", "en"]);
+assert.match(scopedBookResult.evidence[0].reference, /^Ephesians/);
 const chapterBinds = [];
 const ephesiansChapter = await scriptureChapterEvidence({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
   chapterBinds.push({ sql, values });
@@ -391,8 +468,8 @@ const chapterRows = Array.from({ length: 16 }, (_, index) => ({
   source_id: `bible:rcv-en:Eph.4.${index + 1}`
 }));
 const scopedChapterResult = await answerQuery({
-  DB: { prepare: () => ({ bind: () => ({ all: async () => ({ results: chapterRows }) }) }) },
-  AI: { run: async () => ({ response: [{ id: 10, score: 0.99 }, { id: 11, score: 0.98 }, { id: 15, score: 0.9 }] }) }
+  DB: { prepare: sql => ({ bind: () => ({ all: async () => ({ results: sql.includes("FROM bible_verses") ? chapterRows : [] }) }) }) },
+  AI: { run: async (_model, input) => ({ response: [12, 16, 11].map((verse, index) => ({ id: input.contexts.findIndex(item => item.text.startsWith(`Ephesians 4:${verse}\n`)), score: 0.99 - index / 10 })) }) }
 }, "Regarding shepherding that leads to the building up, find the verse in Ephesians chapter 4", "en", {}, false);
 assert.equal(scopedChapterResult.mode, "scripture_chapter_retrieval");
 assert.deepEqual(scopedChapterResult.evidence.slice(0, 2).map(item => item.reference), ["Ephesians 4:11", "Ephesians 4:12"]);
@@ -623,6 +700,7 @@ const treeTestEnv = {
         reason: "primary_sources_sufficient",
         points: [{
           text: "The tree of life signifies the Triune God embodied in Christ as life to man in the form of food.",
+          basis: "commentary",
           citations: ["S1", "S2"]
         }]
       } };
@@ -841,8 +919,8 @@ const livingWaterEnv = {
         subject_supported: true,
         reason: "primary_sources_sufficient",
         points: [
-          { aspect: "come_and_drink", text: "口渴的人要到主这里来喝，并白白取生命的水。", citations: ["S1", "S3"] },
-          { aspect: "believe_and_receive", text: "喝生命活水就是信入主，并接受那灵作活水。", citations: ["S2", "S4"] }
+          { aspect: "come_and_drink", basis: "scripture", text: "口渴的人要到主这里来喝，并白白取生命的水。", citations: ["S1", "S3"] },
+          { aspect: "believe_and_receive", basis: "commentary", text: "喝生命活水就是信入主，并接受那灵作活水。", citations: ["S2", "S4"] }
         ]
       } };
       return {};
