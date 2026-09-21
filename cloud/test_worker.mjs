@@ -382,6 +382,10 @@ assert.equal(structuredResult({ response: { answerable: true, answer_type: "mean
 assert.equal(parseNumber("二十八"), 28);
 const attributionEvidence = [{ citation_id: "S1", source_type: "footnote", reference: "John 21:16, footnote 1", text: "Shepherding is related to God's building." }];
 const attributionResult = basis => structuredResult({ response: { answerable: true, points: [{ text: "Shepherding is related to God's building.", basis, citations: ["S1"] }] } }, 1, "en", Infinity, 1, [], true, "", false, null, attributionEvidence);
+const verseCitationEvidence = [{ citation_id: "S1", source_type: "bible", reference: "Matthew 5:3" }, { citation_id: "S2", source_type: "bible", reference: "Matthew 5:8" }];
+const referenceCheck = text => structuredResult({ response: { answerable: true, points: [{ text, basis: "scripture", citations: ["S1", "S2"] }] } }, 2, "en", Infinity, 1, [], true, "", false, null, verseCitationEvidence);
+assert.equal(referenceCheck("Matthew 5:3-4 speaks of being poor in spirit and pure in heart.").reason, "citation_reference_mismatch");
+assert.equal(referenceCheck("Matthew 5:3 and Matthew 5:8 speak of being poor in spirit and pure in heart.").answerable, true);
 assert.equal(attributionResult("scripture").reason, "unsupported_source_attribution");
 assert.equal(attributionResult(undefined).reason, "unsupported_source_attribution");
 assert.match(attributionResult("commentary").answer, /^According to John 21:16, footnote 1:/);
@@ -473,6 +477,24 @@ const scopedChapterResult = await answerQuery({
 }, "Regarding shepherding that leads to the building up, find the verse in Ephesians chapter 4", "en", {}, false);
 assert.equal(scopedChapterResult.mode, "scripture_chapter_retrieval");
 assert.deepEqual(scopedChapterResult.evidence.slice(0, 2).map(item => item.reference), ["Ephesians 4:11", "Ephesians 4:12"]);
+let correctionCalls = 0;
+const correctedCitationResult = await answerQuery({
+  DB: { prepare: sql => ({ bind: () => ({ all: async () => ({ results: sql.includes("FROM bible_verses") ? [
+    { book_name: "Matthew", chapter: 5, verse: 3, text: "Blessed are the poor in spirit, for theirs is the kingdom of the heavens.", source_id: "verse:Matt.5.3" },
+    { book_name: "Matthew", chapter: 5, verse: 8, text: "Blessed are the pure in heart, for they shall see God.", source_id: "verse:Matt.5.8" }
+  ] : [] }) }) }) },
+  AI: { run: async (model, input) => {
+    if (model.includes("reranker")) return { response: [{ id: 0, score: 1 }, { id: 1, score: 0.9 }] };
+    correctionCalls++;
+    if (correctionCalls > 1) assert.ok(input.messages.some(message => message.content.includes("Correction required:")));
+    return { response: { answerable: true, subject_supported: true, answer_type: "verification", points: [{ basis: "scripture", citations: ["S1", "S2"], text: correctionCalls === 1
+      ? "Matthew 5:3-4 blesses the poor in spirit and the pure in heart."
+      : "Matthew 5:3 blesses the poor in spirit and Matthew 5:8 blesses the pure in heart." }] } };
+  } }
+}, "Does Matthew 5 state a direct causal relation between being poor in spirit and pure in heart?", "en");
+assert.equal(correctionCalls, 2);
+assert.equal(correctedCitationResult.answerable, true);
+assert.doesNotMatch(correctedCitationResult.answer_markdown, /5:3-4/);
 const exactBinds = [];
 const exactEnglish = await exactLookup({ DB: { prepare: sql => ({ bind: (...values) => ({ all: async () => {
   exactBinds.push({ sql, values });
